@@ -9,27 +9,16 @@ import com.typesafe.config.ConfigFactory
 import coursier.util.Properties
 import coursier.{Dependency, Module}
 
-final case class MainOptions(
-  @ExtraName("org")
-    organization: String = "",
-  name: String = "",
-  version: String = "",
-  scalaVersion: String = "",
-  sbtVersion: String = "",
-  mainClass: String = "",
-  mainComponents: List[String] = Nil,
-  classpathExtra: List[String] = Nil,
-  extra: List[String] = Nil,
-  addCoursier: Boolean = true
-)
-
 object MainApp extends CaseApp[MainOptions] {
 
-  val debug = sys.props.contains("coursier.sbt-launcher.debug") || sys.env.contains("COURSIER_SBT_LAUNCHER_DEBUG")
+  private val debug = sys.props.contains("coursier.sbt-launcher.debug") || sys.env.contains("COURSIER_SBT_LAUNCHER_DEBUG")
 
-  def log(msg: String): Unit =
+  private def log(msg: String): Unit =
     if (debug)
       Console.err.println(msg)
+
+  private def defaultBase(sbtBinaryVersion: String): String =
+    s"${sys.props("user.home")}/.csbt/$sbtBinaryVersion"
 
   def run(options: MainOptions, remainingArgs: RemainingArgs): Unit = {
 
@@ -64,6 +53,16 @@ object MainApp extends CaseApp[MainOptions] {
           )
       }
 
+    val sbtBinaryVersion = sbtVersion0.split('.').take(2) match {
+      case Array("0", v) => s"0.$v"
+      case Array(major, _) => s"$major.0"
+    }
+
+    sys.props("sbt.global.base") = sys.props.getOrElse(
+      "csbt.global.base",
+      defaultBase(sbtBinaryVersion)
+    )
+
     val (extraParseErrors, extraModuleVersions) =
       coursier.util.Parse.moduleVersions(options.extra, options.scalaVersion)
 
@@ -85,7 +84,7 @@ object MainApp extends CaseApp[MainOptions] {
               "sbt-coursier",
               attributes = Map(
                 "scalaVersion" -> scalaVer0.split('.').take(2).mkString("."),
-                "sbtVersion" -> sbtVersion0.split('.').take(2).mkString(".")
+                "sbtVersion" -> sbtBinaryVersion
               )
             ),
             Properties.version
@@ -96,11 +95,14 @@ object MainApp extends CaseApp[MainOptions] {
 
     log("Creating launcher")
 
+    // Putting stuff under "project/target" rather than just "target" so that this doesn't get wiped out
+    // when running the clean command from sbt.
     val launcher = new Launcher(
       scalaVer0,
+      new File(s"${sys.props("user.dir")}/project/target/scala-jars"),
       // FIXME Add org & moduleName in this path
-      new File(s"${sys.props("user.dir")}/target/sbt-components/components_scala$scalaVer0${if (sbtVersion0.isEmpty) "" else "_sbt" + sbtVersion0}"),
-      new File(s"${sys.props("user.dir")}/target/ivy2")
+      new File(s"${sys.props("user.dir")}/project/target/sbt-components/components_scala$scalaVer0${if (sbtVersion0.isEmpty) "" else "_sbt" + sbtVersion0}"),
+      new File(s"${sys.props("user.dir")}/project/target/ivy2")
     )
 
     log("Registering scala components")
@@ -132,10 +134,12 @@ object MainApp extends CaseApp[MainOptions] {
     val appMain = appProvider.newMain()
 
     val appConfig = AppConfiguration(
-      remainingArgs.args.toArray,
+      remainingArgs.all.toArray,
       new File(sys.props("user.dir")),
       appProvider
     )
+
+    Console.err.println(s"Running sbt $sbtVersion0")
 
     val thread = Thread.currentThread()
     val previousLoader = thread.getContextClassLoader
