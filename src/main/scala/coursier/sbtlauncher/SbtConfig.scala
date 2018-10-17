@@ -29,9 +29,9 @@ object SbtConfig {
       if (config.hasPath("scala.version"))
         config.getString("scala.version")
       else if (version.startsWith("0.13."))
-        "2.10.6"
-      else if (version.startsWith("1.0."))
-        "2.12.1"
+        "2.10.7"
+      else if (version.startsWith("1."))
+        "2.12.7"
       else
         throw new Exception(s"Don't know what Scala version should be used for sbt version '$version'")
 
