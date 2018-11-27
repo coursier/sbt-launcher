@@ -562,7 +562,7 @@ class Launcher(
       files match {
         case Nil =>
           throw new NoSuchElementException(s"interface JAR for sbt $sbtVersion0")
-        case List(jar) =>
+        case Seq(jar) =>
           jar
         case _ =>
           sys.error(s"Too many interface JAR for sbt $sbtVersion0: ${files.mkString(", ")}")
@@ -598,7 +598,7 @@ class Launcher(
       files match {
         case Nil =>
           throw new NoSuchElementException(s"compiler-interface source JAR for sbt $sbtVersion0")
-        case List(jar) =>
+        case Seq(jar) =>
           jar
         case _ =>
           sys.error(s"Too many compiler-interface source JAR for sbt $sbtVersion0: ${files.mkString(", ")}")
