@@ -4,6 +4,7 @@ set -e
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
 VERSION="${VERSION:-1.1.0-M1}"
+OUTPUT="${OUTPUT:-csbt}"
 
 if which coursier >/dev/null 2>&1; then
   COURSIER=coursier
@@ -23,7 +24,7 @@ fi
   --no-default \
   -i launcher \
   -I launcher:org.scala-sbt:launcher-interface:1.0.0 \
-  -o csbt \
+  -o "$OUTPUT" \
   -J -Djline.shutdownhook=false \
   --embed-files=false \
   "$@"
