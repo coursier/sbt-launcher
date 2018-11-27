@@ -1,0 +1,6 @@
+[submodule "tests/sourcecode-sbt-1.2.3"]
+	path = tests/sourcecode-sbt-1.2.3
+	url = https://github.com/lihaoyi/sourcecode.git
+[submodule "tests/sourcecode-sbt-0.13.7"]
+	path = tests/sourcecode-sbt-0.13.17
+	url = https://github.com/lihaoyi/sourcecode.git

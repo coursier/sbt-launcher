@@ -2,6 +2,10 @@ language: scala
 jdk: oraclejdk8
 before_install:
   - git fetch --tags
+dist: trusty
+sudo: required
+before_install:
+- curl https://raw.githubusercontent.com/scala-native/scala-native/master/scripts/travis_setup.sh | bash -x
 script: sbt -batch ++${TRAVIS_SCALA_VERSION} test
 stages:
   - name: test

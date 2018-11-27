@@ -6,7 +6,6 @@ import java.nio.file.Files
 
 import caseapp._
 import com.typesafe.config.ConfigFactory
-import coursier.util.Properties
 import coursier.{Dependency, Module}
 
 object MainApp extends CaseApp[MainOptions] {
@@ -87,7 +86,7 @@ object MainApp extends CaseApp[MainOptions] {
                 "sbtVersion" -> sbtBinaryVersion
               )
             ),
-            Properties.version
+            Properties.sbtCoursierDefaultVersion
           )
         )
       else
