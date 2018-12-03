@@ -123,7 +123,7 @@ object MainApp extends CaseApp[MainOptions] {
 
       launcher.registerScalaComponents()
 
-      if (sbtVersion0.nonEmpty) {
+      if (sbtVersion0.startsWith("0.")) {
         log("Registering sbt interface components")
         launcher.registerSbtInterfaceComponents(sbtVersion0)
       }

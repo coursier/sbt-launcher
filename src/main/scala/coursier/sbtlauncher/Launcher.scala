@@ -470,7 +470,7 @@ class Launcher(
 
     lazy val compilerInterfaceSourceJar = sbtCompilerInterfaceSrcComponentFile(sbtVersion)
 
-    if (sbtVersion.startsWith("0.") && componentProvider.component("xsbti").isEmpty) {
+    if (componentProvider.component("xsbti").isEmpty) {
       val (interfaceJar, _) = sbtInterfaceComponentFiles(sbtVersion)
       componentProvider.defineComponentNoCopy("xsbti", Array(interfaceJar))
     }
