@@ -59,6 +59,16 @@ object ProjectTests extends TestSuite {
       }
     }
 
+    "reload" - {
+      * - {
+        val dir = Paths.get("tests/sourcecode-sbt-1.2.3")
+        run(
+          dir,
+          sbtCommands = Seq("test:compile", "reload", "test")
+        )
+      }
+    }
+
   }
 
 }

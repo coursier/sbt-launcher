@@ -7,8 +7,9 @@ import java.util.concurrent.ConcurrentHashMap
 
 import coursier.Cache.Logger
 import coursier._
+import coursier.core.{Classifier, Extension, Type}
 import coursier.ivy.IvyRepository
-import coursier.maven.MavenSource
+import coursier.maven.MavenAttributes
 import coursier.util.Task
 
 import scala.annotation.tailrec
@@ -22,9 +23,11 @@ class Launcher(
   val ivyHome: File
 ) extends xsbti.Launcher {
 
-  private def noVersionScalaJar(scalaOrg: String, scalaVersion: String, jar: File): File = {
+  import Launcher._
 
-    val dir = new File(scalaJarCache, s"$scalaOrg/$scalaVersion")
+  private def noVersionScalaJar(scalaOrg: Organization, scalaVersion: String, jar: File): File = {
+
+    val dir = new File(scalaJarCache, s"${scalaOrg.value}/$scalaVersion")
     dir.mkdirs()
 
     val origName = jar.getName
@@ -110,25 +113,23 @@ class Launcher(
     Fetch.from(repositories.map(_._2), f.head, f.tail: _*)
   }
 
-  val keepArtifactTypes = Set("jar", "bundle")
+  def tasks(res: Resolution, logger: Option[Logger], classifiersOpt: Option[Seq[Classifier]] = None) = {
+    val a = res.dependencyArtifacts(classifiersOpt)
 
-  def tasks(res: Resolution, logger: Option[Logger], classifiersOpt: Option[Seq[String]] = None) = {
-    val a = classifiersOpt
-      .fold(res.dependencyArtifacts.map(_._2))(res.dependencyClassifiersArtifacts(_).map(_._2))
-
-    val keepArtifactTypes = classifiersOpt.fold(Set("jar", "bundle"))(c => c.map(c => MavenSource.classifierExtensionDefaultTypes.getOrElse((c, "jar"), ???)).toSet)
+    val keepArtifactTypes = classifiersOpt.fold(Set(Type.jar, Type.bundle))(c => c.map(c => MavenAttributes.classifierExtensionDefaultTypes.getOrElse((c, Extension.jar), ???)).toSet)
 
     a.collect {
-        case artifact if keepArtifactTypes(artifact.`type`) =>
-          def file(policy: CachePolicy) = Cache.file[Task](
+      case (_, attr, artifact) if keepArtifactTypes(attr.`type`) =>
+        def file(policy: CachePolicy) =
+          Cache.file[Task](
             artifact,
             cachePolicy = policy,
             logger = logger
           )
 
-          (file(cachePolicies.head) /: cachePolicies.tail)(_ orElse file(_))
-            .run
-            .map(artifact.->)
+        (file(cachePolicies.head) /: cachePolicies.tail)(_ orElse file(_))
+          .run
+          .map(artifact.->)
       }
   }
 
@@ -141,39 +142,44 @@ class Launcher(
     getScala(version, "")
 
   def getScala(version: String, reason: String): xsbti.ScalaProvider =
-    getScala(version, reason, "org.scala-lang")
+    getScala(version, reason, defaultScalaOrg.value)
 
   def getScala(version: String, reason: String, scalaOrg: String): xsbti.ScalaProvider = {
 
-    val key = (version, scalaOrg)
+    val scalaOrg0 = Organization(scalaOrg)
+    val key = (version, scalaOrg0)
 
     if (!scalaProviderCache.contains(key)) {
-      val prov = getScala0(version, reason, scalaOrg)
+      val prov = getScala0(version, reason, scalaOrg0)
       scalaProviderCache.putIfAbsent(key, prov)
     }
 
     scalaProviderCache.get(key)
   }
 
-  private val scalaProviderCache = new ConcurrentHashMap[(String, String), xsbti.ScalaProvider]
+  private val scalaProviderCache = new ConcurrentHashMap[(String, Organization), xsbti.ScalaProvider]
 
-  private def getScala0(version: String, reason: String, scalaOrg: String): xsbti.ScalaProvider = {
+  private def getScalaProvider(files: Seq[File], version: String): xsbti.ScalaProvider = {
 
-    val files = getScalaFiles(version, reason, scalaOrg).map(noVersionScalaJar(scalaOrg, version, _))
-
-    val libraryJar = files.find(_.getName.startsWith("scala-library")).getOrElse {
-      throw new NoSuchElementException("scala-library JAR")
+    // The way these JARs are found is kind of flaky - there are ways to get the right JARs with 100% certainty
+    // via coursier.core.Resolution.dependencyArtifacts.
+    val (libraryJars, otherJars) = files.partition(_.getName.startsWith("scala-library"))
+    val libraryJar = libraryJars match {
+      case Seq(j) => j
+      case _ => throw new NoSuchElementException("scala-library JAR")
     }
-    val compilerJar = files.find(_.getName.startsWith("scala-compiler")).getOrElse {
+    val compilerJar = otherJars.find(_.getName.startsWith("scala-compiler")).getOrElse {
       throw new NoSuchElementException("scala-compiler JAR")
     }
 
-    val scalaLoader = new URLClassLoader(files.map(_.toURI.toURL).toArray, baseLoader)
+    val libraryLoader = new URLClassLoader(Array(libraryJar.toURI.toURL), baseLoader)
+    val loader = new URLClassLoader(otherJars.map(_.toURI.toURL).toArray, libraryLoader)
 
     ScalaProvider(
       this,
       version,
-      scalaLoader,
+      libraryLoader,
+      loader,
       files.toArray,
       libraryJar,
       compilerJar,
@@ -181,17 +187,24 @@ class Launcher(
     )
   }
 
-  private def getScalaFiles(version: String, reason: String, scalaOrg: String): Seq[File] = {
+  private def getScala0(version: String, reason: String, scalaOrg: Organization): xsbti.ScalaProvider = {
+
+    val files = getScalaFiles(version, reason, scalaOrg).map(noVersionScalaJar(scalaOrg, version, _))
+
+    getScalaProvider(files, version)
+  }
+
+  private def getScalaFiles(version: String, reason: String, scalaOrg: Organization): Seq[File] = {
 
     val initialRes = Resolution(
       Set(
-        Dependency(Module(scalaOrg, "scala-library"), version),
-        Dependency(Module(scalaOrg, "scala-compiler"), version)
+        Dependency(Module(scalaOrg, name"scala-library"), version),
+        Dependency(Module(scalaOrg, name"scala-compiler"), version)
       ),
       forceVersions = Map(
-        Module(scalaOrg, "scala-library") -> version,
-        Module(scalaOrg, "scala-compiler") -> version,
-        Module(scalaOrg, "scala-reflect") -> version
+        Module(scalaOrg, name"scala-library") -> version,
+        Module(scalaOrg, name"scala-compiler") -> version,
+        Module(scalaOrg, name"scala-reflect") -> version
       )
     )
 
@@ -242,7 +255,7 @@ class Launcher(
         System.err.println(s"Fetched Scala $version artifacts (organization $scalaOrg)")
     }
 
-    val errors = results.collect { case (a, Left(err)) => (a, err) }
+    val errors = results.collect { case (a, Left(err)) if !a.optional || !err.notFound => (a, err) }
     val files = results.collect { case (_, Right(f)) => f }
 
     if (errors.nonEmpty) {
@@ -293,30 +306,13 @@ class Launcher(
 
   def app(id: xsbti.ApplicationID, extra: Dependency*): xsbti.AppProvider = {
 
-    val scalaOrg = "org.scala-lang"
+    val scalaOrg = defaultScalaOrg
     val (scalaFiles, files) = appFiles(scalaOrg, scalaVersion, id, extra: _*)
     val scalaFiles0 = scalaFiles.map(noVersionScalaJar(scalaOrg, scalaVersion, _))
 
-    val scalaLoader = new URLClassLoader(scalaFiles0.map(_.toURI.toURL).toArray, baseLoader)
+    val scalaProvider = getScalaProvider(scalaFiles0, scalaVersion)
 
-    val libraryJar = scalaFiles0.find(_.getName.startsWith("scala-library")).getOrElse {
-      throw new NoSuchElementException("scala-library JAR")
-    }
-    val compilerJar = scalaFiles0.find(_.getName.startsWith("scala-compiler")).getOrElse {
-      throw new NoSuchElementException("scala-compiler JAR")
-    }
-
-    val scalaProvider = ScalaProvider(
-      this,
-      scalaVersion,
-      scalaLoader,
-      scalaFiles0.toArray,
-      libraryJar,
-      compilerJar,
-      id => app(id, id.version())
-    )
-
-    val loader = new URLClassLoader(files.filterNot(scalaFiles.toSet).map(_.toURI.toURL).toArray, scalaLoader)
+    val loader = new URLClassLoader(files.filterNot(scalaFiles.toSet).map(_.toURI.toURL).toArray, scalaProvider.loader())
     val mainClass0 = loader.loadClass(id.mainClass).asSubclass(classOf[xsbti.AppMain])
 
     AppProvider(
@@ -331,7 +327,7 @@ class Launcher(
   }
 
   private def appFiles(
-    scalaOrg: String,
+    scalaOrg: Organization,
     scalaVersion: String,
     id: xsbti.ApplicationID,
     extra: Dependency*
@@ -341,14 +337,14 @@ class Launcher(
 
     val initialRes = Resolution(
       Set(
-        Dependency(Module(scalaOrg, "scala-library"), scalaVersion),
-        Dependency(Module(scalaOrg, "scala-compiler"), scalaVersion),
-        Dependency(Module(id0.groupID, id0.name), id0.version)
+        Dependency(Module(scalaOrg, name"scala-library"), scalaVersion),
+        Dependency(Module(scalaOrg, name"scala-compiler"), scalaVersion),
+        Dependency(Module(Organization(id0.groupID), ModuleName(id0.name)), id0.version)
       ) ++ extra,
       forceVersions = Map(
-        Module(scalaOrg, "scala-library") -> scalaVersion,
-        Module(scalaOrg, "scala-compiler") -> scalaVersion,
-        Module(scalaOrg, "scala-reflect") -> scalaVersion
+        Module(scalaOrg, name"scala-library") -> scalaVersion,
+        Module(scalaOrg, name"scala-compiler") -> scalaVersion,
+        Module(scalaOrg, name"scala-reflect") -> scalaVersion
       )
     )
 
@@ -405,7 +401,7 @@ class Launcher(
         System.err.println(s"Fetched ${id0.groupID}:${id0.name}:${id0.version} artifacts")
     }
 
-    val errors = results.collect { case (a, Left(err)) => (a, err) }
+    val errors = results.collect { case (a, Left(err)) if !a.optional || !err.notFound => (a, err) }
     val files = results.collect { case (_, Right(f)) => f }
 
     if (errors.nonEmpty) {
@@ -415,8 +411,8 @@ class Launcher(
 
     val scalaSubRes = res.subset(
       Set(
-        Dependency(Module(scalaOrg, "scala-library"), scalaVersion),
-        Dependency(Module(scalaOrg, "scala-compiler"), scalaVersion)
+        Dependency(Module(scalaOrg, name"scala-library"), scalaVersion),
+        Dependency(Module(scalaOrg, name"scala-compiler"), scalaVersion)
       )
     )
 
@@ -436,7 +432,7 @@ class Launcher(
         System.err.println(s"Fetched ${id0.groupID}:${id0.name}:${id0.version} Scala artifacts")
     }
 
-    val scalaErrors = scalaResults.collect { case (a, Left(err)) => (a, err) }
+    val scalaErrors = scalaResults.collect { case (a, Left(err)) if !a.optional || !err.notFound => (a, err) }
     val scalaFiles = scalaResults.collect { case (_, Right(f)) => f }
 
     if (scalaErrors.nonEmpty) {
@@ -495,7 +491,7 @@ class Launcher(
 
       val initialRes = Resolution(
         Set(
-          Dependency(Module("org.scala-sbt", "interface"), sbtVersion0, transitive = false)
+          Dependency(mod"org.scala-sbt:interface", sbtVersion0, transitive = false)
         )
       )
 
@@ -551,7 +547,7 @@ class Launcher(
           System.err.println(s"Fetched org.scala-sbt:interface:$sbtVersion0 artifacts")
       }
 
-      val errors = results.collect { case (a, Left(err)) => (a, err) }
+      val errors = results.collect { case (a, Left(err)) if !a.optional || !err.notFound => (a, err) }
       val files = results.collect { case (_, Right(f)) => f }
 
       if (errors.nonEmpty) {
@@ -580,14 +576,14 @@ class Launcher(
         System.err.println(s"Fetching org.scala-sbt:interface:$sbtVersion0 source artifacts")
       })
 
-      val results = Task.gather.gather(tasks(res, artifactLogger, Some(Seq("sources")))).unsafeRun()(ExecutionContext.global)
+      val results = Task.gather.gather(tasks(res, artifactLogger, Some(Seq(Classifier.sources)))).unsafeRun()(ExecutionContext.global)
 
       artifactLogger.foreach { l =>
         if (l.stopDidPrintSomething())
           System.err.println(s"Fetched org.scala-sbt:interface:$sbtVersion0 source artifacts")
       }
 
-      val errors = results.collect { case (a, Left(err)) => (a, err) }
+      val errors = results.collect { case (a, Left(err)) if !a.optional || !err.notFound => (a, err) }
       val files = results.collect { case (_, Right(f)) => f }
 
       if (errors.nonEmpty) {
@@ -614,7 +610,7 @@ class Launcher(
 
       val initialRes = Resolution(
         Set(
-          Dependency(Module("org.scala-sbt", "compiler-interface"), sbtVersion, transitive = false)
+          Dependency(mod"org.scala-sbt:compiler-interface", sbtVersion, transitive = false)
         )
       )
 
@@ -665,7 +661,7 @@ class Launcher(
 
       val results = Task.gather.gather(
         tasks(res, artifactLogger, None) ++
-          tasks(res, artifactLogger, Some(Seq("sources")))
+          tasks(res, artifactLogger, Some(Seq(Classifier.sources)))
       ).unsafeRun()(ExecutionContext.global)
 
       artifactLogger.foreach { l =>
@@ -673,7 +669,7 @@ class Launcher(
           System.err.println(s"Fetched org.scala-sbt:compiler-interface:$sbtVersion source artifacts")
       }
 
-      val errors = results.collect { case (a, Left(err)) => (a, err) }
+      val errors = results.collect { case (a, Left(err)) if !a.optional || !err.notFound => (a, err) }
 
       if (errors.nonEmpty) {
         Console.err.println(s"Error downloading artifacts:\n${errors.map("  " + _).mkString("\n")}")
@@ -692,4 +688,10 @@ class Launcher(
         sys.error("compiler-interface-src not found")
       }
   }
+}
+
+object Launcher {
+
+  val defaultScalaOrg = org"org.scala-lang"
+
 }
