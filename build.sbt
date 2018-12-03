@@ -21,9 +21,9 @@ lazy val `sbt-launcher` = project
     scalacOptions ++= Seq("-feature", "-deprecation"),
     libraryDependencies ++= Seq(
       "io.get-coursier" %% "coursier-cache" % "1.1.0-M7",
-      "com.github.alexarchambault" %% "case-app" % "2.0.0-M2",
-      "org.scala-sbt" % "launcher-interface" % "1.0.0",
-      "com.typesafe" % "config" % "1.3.2",
+      "com.github.alexarchambault" %% "case-app" % "2.0.0-M5",
+      "org.scala-sbt" % "launcher-interface" % "1.0.4",
+      "com.typesafe" % "config" % "1.3.3",
       "com.lihaoyi" %% "utest" % "0.6.6" % "test"
     ),
     test.in(Test) := test.in(Test).dependsOn(publishLocal).value,
