@@ -255,7 +255,7 @@ class Launcher(
         System.err.println(s"Fetched Scala $version artifacts (organization $scalaOrg)")
     }
 
-    val errors = results.collect { case (a, Left(err)) => (a, err) }
+    val errors = results.collect { case (a, Left(err)) if !a.optional || !err.notFound => (a, err) }
     val files = results.collect { case (_, Right(f)) => f }
 
     if (errors.nonEmpty) {
@@ -401,7 +401,7 @@ class Launcher(
         System.err.println(s"Fetched ${id0.groupID}:${id0.name}:${id0.version} artifacts")
     }
 
-    val errors = results.collect { case (a, Left(err)) => (a, err) }
+    val errors = results.collect { case (a, Left(err)) if !a.optional || !err.notFound => (a, err) }
     val files = results.collect { case (_, Right(f)) => f }
 
     if (errors.nonEmpty) {
@@ -432,7 +432,7 @@ class Launcher(
         System.err.println(s"Fetched ${id0.groupID}:${id0.name}:${id0.version} Scala artifacts")
     }
 
-    val scalaErrors = scalaResults.collect { case (a, Left(err)) => (a, err) }
+    val scalaErrors = scalaResults.collect { case (a, Left(err)) if !a.optional || !err.notFound => (a, err) }
     val scalaFiles = scalaResults.collect { case (_, Right(f)) => f }
 
     if (scalaErrors.nonEmpty) {
@@ -547,7 +547,7 @@ class Launcher(
           System.err.println(s"Fetched org.scala-sbt:interface:$sbtVersion0 artifacts")
       }
 
-      val errors = results.collect { case (a, Left(err)) => (a, err) }
+      val errors = results.collect { case (a, Left(err)) if !a.optional || !err.notFound => (a, err) }
       val files = results.collect { case (_, Right(f)) => f }
 
       if (errors.nonEmpty) {
@@ -583,7 +583,7 @@ class Launcher(
           System.err.println(s"Fetched org.scala-sbt:interface:$sbtVersion0 source artifacts")
       }
 
-      val errors = results.collect { case (a, Left(err)) => (a, err) }
+      val errors = results.collect { case (a, Left(err)) if !a.optional || !err.notFound => (a, err) }
       val files = results.collect { case (_, Right(f)) => f }
 
       if (errors.nonEmpty) {
@@ -669,7 +669,7 @@ class Launcher(
           System.err.println(s"Fetched org.scala-sbt:compiler-interface:$sbtVersion source artifacts")
       }
 
-      val errors = results.collect { case (a, Left(err)) => (a, err) }
+      val errors = results.collect { case (a, Left(err)) if !a.optional || !err.notFound => (a, err) }
 
       if (errors.nonEmpty) {
         Console.err.println(s"Error downloading artifacts:\n${errors.map("  " + _).mkString("\n")}")
