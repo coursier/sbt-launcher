@@ -74,6 +74,12 @@ object MainApp extends CaseApp[MainOptions] {
         Dependency(mod, ver)
     }
 
+    val sbtCoursierVersion =
+      if (sbtVersion0.startsWith("0.13."))
+        "1.1.0-M7" // last sbt 0.13 compatible version
+      else
+        Properties.sbtCoursierDefaultVersion
+
     val coursierDeps =
       if (options.addCoursier && sbtVersion0.nonEmpty)
         Seq(
@@ -86,7 +92,7 @@ object MainApp extends CaseApp[MainOptions] {
                 "sbtVersion" -> sbtBinaryVersion
               )
             ),
-            Properties.sbtCoursierDefaultVersion
+            sbtCoursierVersion
           )
         )
       else
