@@ -29,30 +29,44 @@ object MainApp extends CaseApp[MainOptions] {
     val propFileOpt = Some(sbtPropFile).filter(_.exists())
       .orElse(Some(buildPropFile).filter(_.exists()))
 
-    val (org0, name0, ver0, scalaVer0, extraDeps0, mainClass0, sbtVersion0) =
-      propFileOpt match {
-        case Some(propFile) =>
-          log(s"Parsing $propFile")
+    val (org0, name0, ver0, scalaVer0, extraDeps0, mainClass0, sbtVersion0) = {
 
-          // can't get ConfigFactory.parseFile to work fine here
-          val conf = ConfigFactory.parseString(new String(Files.readAllBytes(propFile.toPath), StandardCharsets.UTF_8))
-            .withFallback(ConfigFactory.defaultReference(Thread.currentThread().getContextClassLoader))
-            .resolve()
-          val sbtConfig = SbtConfig.fromConfig(conf)
+      val sbtConfigOpt = propFileOpt.map { propFile =>
+        log(s"Parsing $propFile")
 
-          (sbtConfig.organization, sbtConfig.moduleName, sbtConfig.version, sbtConfig.scalaVersion, sbtConfig.dependencies, sbtConfig.mainClass, sbtConfig.version)
+        // can't get ConfigFactory.parseFile to work fine here
+        val conf = ConfigFactory.parseString(new String(Files.readAllBytes(propFile.toPath), StandardCharsets.UTF_8))
+          .withFallback(ConfigFactory.defaultReference(Thread.currentThread().getContextClassLoader))
+          .resolve()
+
+        SbtConfig.fromConfig(conf)
+      }
+
+      sbtConfigOpt match {
+        case Some(sbtConfig) =>
+          (
+            options.organization.getOrElse(sbtConfig.organization),
+            options.name.getOrElse(sbtConfig.moduleName),
+            options.version.getOrElse(sbtConfig.version),
+            options.scalaVersion.getOrElse(sbtConfig.scalaVersion),
+            sbtConfig.dependencies,
+            options.mainClass.getOrElse(sbtConfig.mainClass),
+            options.sbtVersion.getOrElse(sbtConfig.version)
+          )
         case None =>
           require(options.scalaVersion.nonEmpty, "No scala version specified")
+          // FIXME some other empty values probably aren't fine here
           (
-            options.organization,
-            options.name,
-            options.version,
-            options.scalaVersion,
+            options.organization.getOrElse(""),
+            options.name.getOrElse(""),
+            options.version.getOrElse(""),
+            options.scalaVersion.getOrElse(""),
             Nil,
-            options.mainClass,
-            options.sbtVersion
+            options.mainClass.getOrElse(""),
+            options.sbtVersion.getOrElse("")
           )
       }
+    }
 
     val sbtBinaryVersion = sbtVersion0.split('.').take(2) match {
       case Array("0", v) => s"0.$v"
@@ -65,7 +79,7 @@ object MainApp extends CaseApp[MainOptions] {
     )
 
     val (extraParseErrors, extraModuleVersions) =
-      coursier.util.Parse.moduleVersions(options.extra, options.scalaVersion)
+      coursier.util.Parse.moduleVersions(options.extra, scalaVer0)
 
     if (extraParseErrors.nonEmpty) {
       ???
