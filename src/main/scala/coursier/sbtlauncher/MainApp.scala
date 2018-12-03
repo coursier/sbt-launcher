@@ -8,6 +8,8 @@ import caseapp._
 import com.typesafe.config.ConfigFactory
 import coursier.{Dependency, Module, moduleNameString, organizationString}
 
+import scala.annotation.tailrec
+
 object MainApp extends CaseApp[MainOptions] {
 
   private val debug = sys.props.contains("coursier.sbt-launcher.debug") || sys.env.contains("COURSIER_SBT_LAUNCHER_DEBUG")
@@ -80,43 +82,89 @@ object MainApp extends CaseApp[MainOptions] {
       else
         Properties.sbtCoursierDefaultVersion
 
-    val coursierDeps =
-      if (options.addCoursier && sbtVersion0.nonEmpty)
-        Seq(
-          Dependency(
-            Module(
-              org"io.get-coursier",
-              name"sbt-coursier",
-              attributes = Map(
-                "scalaVersion" -> scalaVer0.split('.').take(2).mkString("."),
-                "sbtVersion" -> sbtBinaryVersion
-              )
-            ),
-            sbtCoursierVersion
+    @tailrec
+    def run(
+      appId: xsbti.ApplicationID,
+      args: Array[String],
+      scalaVersion: String
+    ): Unit = {
+
+      val coursierDeps =
+        if (options.addCoursier && sbtVersion0.nonEmpty)
+          Seq(
+            Dependency(
+              Module(
+                org"io.get-coursier",
+                name"sbt-coursier",
+                attributes = Map(
+                  "scalaVersion" -> scalaVersion.split('.').take(2).mkString("."),
+                  "sbtVersion" -> sbtBinaryVersion
+                )
+              ),
+              sbtCoursierVersion
+            )
           )
-        )
-      else
-        Nil
+        else
+          Nil
 
-    log("Creating launcher")
+      log("Creating launcher")
 
-    // Putting stuff under "project/target" rather than just "target" so that this doesn't get wiped out
-    // when running the clean command from sbt.
-    val launcher = new Launcher(
-      scalaVer0,
-      new File(s"${sys.props("user.dir")}/project/target/scala-jars"),
-      // FIXME Add org & moduleName in this path
-      new File(s"${sys.props("user.dir")}/project/target/sbt-components/components_scala$scalaVer0${if (sbtVersion0.isEmpty) "" else "_sbt" + sbtVersion0}"),
-      new File(s"${sys.props("user.dir")}/project/target/ivy2")
-    )
+      // Putting stuff under "project/target" rather than just "target" so that this doesn't get wiped out
+      // when running the clean command from sbt.
+      val launcher = new Launcher(
+        scalaVersion,
+        new File(s"${sys.props("user.dir")}/project/target/scala-jars"),
+        // FIXME Add org & moduleName in this path
+        new File(s"${sys.props("user.dir")}/project/target/sbt-components/components_scala$scalaVersion${if (sbtVersion0.isEmpty) "" else "_sbt" + sbtVersion0}"),
+        new File(s"${sys.props("user.dir")}/project/target/ivy2")
+      )
 
-    log("Registering scala components")
+      log("Registering scala components")
 
-    launcher.registerScalaComponents()
+      launcher.registerScalaComponents()
 
-    if (sbtVersion0.nonEmpty) {
-      log("Registering sbt interface components")
-      launcher.registerSbtInterfaceComponents(sbtVersion0)
+      if (sbtVersion0.nonEmpty) {
+        log("Registering sbt interface components")
+        launcher.registerSbtInterfaceComponents(sbtVersion0)
+      }
+
+      log("Getting app provider")
+
+      val appProvider = launcher.app(appId, extraDeps0 ++ extraDeps ++ coursierDeps: _*)
+
+      log("Creating main")
+
+      val appMain = appProvider.newMain()
+
+      val appConfig = AppConfiguration(
+        args,
+        new File(sys.props("user.dir")),
+        appProvider
+      )
+
+      Console.err.println(s"Running sbt $sbtVersion0")
+
+      val thread = Thread.currentThread()
+      val previousLoader = thread.getContextClassLoader
+
+      val result =
+        try {
+          thread.setContextClassLoader(appProvider.loader())
+          appMain.run(appConfig)
+        } finally {
+          thread.setContextClassLoader(previousLoader)
+        }
+
+      log("Done")
+
+      result match {
+        case _: xsbti.Continue =>
+        case e: xsbti.Exit =>
+          sys.exit(e.code())
+        case r: xsbti.Reboot =>
+          // xsbti.Reboot also has a baseDirectory method, not sure how it is used in the sbt launcher implementation
+          run(r.app(), r.arguments(), r.scalaVersion())
+      }
     }
 
     val appId = ApplicationID(
@@ -130,42 +178,7 @@ object MainApp extends CaseApp[MainOptions] {
       options.classpathExtra.map(new File(_)).toArray
     )
 
-    log("Getting app provider")
-
-    val appProvider = launcher.app(appId, extraDeps0 ++ extraDeps ++ coursierDeps: _*)
-
-    log("Creating main")
-
-    val appMain = appProvider.newMain()
-
-    val appConfig = AppConfiguration(
-      remainingArgs.all.toArray,
-      new File(sys.props("user.dir")),
-      appProvider
-    )
-
-    Console.err.println(s"Running sbt $sbtVersion0")
-
-    val thread = Thread.currentThread()
-    val previousLoader = thread.getContextClassLoader
-
-    val result =
-      try {
-        thread.setContextClassLoader(appProvider.loader())
-        appMain.run(appConfig)
-      } finally {
-        thread.setContextClassLoader(previousLoader)
-      }
-
-    log("Done")
-
-    result match {
-      case _: xsbti.Continue =>
-      case e: xsbti.Exit =>
-        sys.exit(e.code())
-      case _: xsbti.Reboot =>
-        sys.error("Not able to reboot yet")
-    }
+    run(appId, remainingArgs.all.toArray, scalaVer0)
   }
 
 }
