@@ -6,7 +6,7 @@ import java.nio.file.Files
 
 import caseapp._
 import com.typesafe.config.ConfigFactory
-import coursier.{Dependency, Module}
+import coursier.{Dependency, Module, moduleNameString, organizationString}
 
 object MainApp extends CaseApp[MainOptions] {
 
@@ -79,8 +79,8 @@ object MainApp extends CaseApp[MainOptions] {
         Seq(
           Dependency(
             Module(
-              "io.get-coursier",
-              "sbt-coursier",
+              org"io.get-coursier",
+              name"sbt-coursier",
               attributes = Map(
                 "scalaVersion" -> scalaVer0.split('.').take(2).mkString("."),
                 "sbtVersion" -> sbtBinaryVersion
