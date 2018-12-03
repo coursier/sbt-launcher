@@ -159,28 +159,39 @@ class Launcher(
 
   private val scalaProviderCache = new ConcurrentHashMap[(String, Organization), xsbti.ScalaProvider]
 
-  private def getScala0(version: String, reason: String, scalaOrg: Organization): xsbti.ScalaProvider = {
+  private def getScalaProvider(files: Seq[File], version: String): xsbti.ScalaProvider = {
 
-    val files = getScalaFiles(version, reason, scalaOrg).map(noVersionScalaJar(scalaOrg, version, _))
-
-    val libraryJar = files.find(_.getName.startsWith("scala-library")).getOrElse {
-      throw new NoSuchElementException("scala-library JAR")
+    // The way these JARs are found is kind of flaky - there are ways to get the right JARs with 100% certainty
+    // via coursier.core.Resolution.dependencyArtifacts.
+    val (libraryJars, otherJars) = files.partition(_.getName.startsWith("scala-library"))
+    val libraryJar = libraryJars match {
+      case Seq(j) => j
+      case _ => throw new NoSuchElementException("scala-library JAR")
     }
-    val compilerJar = files.find(_.getName.startsWith("scala-compiler")).getOrElse {
+    val compilerJar = otherJars.find(_.getName.startsWith("scala-compiler")).getOrElse {
       throw new NoSuchElementException("scala-compiler JAR")
     }
 
-    val scalaLoader = new URLClassLoader(files.map(_.toURI.toURL).toArray, baseLoader)
+    val libraryLoader = new URLClassLoader(Array(libraryJar.toURI.toURL), baseLoader)
+    val loader = new URLClassLoader(otherJars.map(_.toURI.toURL).toArray, libraryLoader)
 
     ScalaProvider(
       this,
       version,
-      scalaLoader,
+      libraryLoader,
+      loader,
       files.toArray,
       libraryJar,
       compilerJar,
       id => app(id, id.version())
     )
+  }
+
+  private def getScala0(version: String, reason: String, scalaOrg: Organization): xsbti.ScalaProvider = {
+
+    val files = getScalaFiles(version, reason, scalaOrg).map(noVersionScalaJar(scalaOrg, version, _))
+
+    getScalaProvider(files, version)
   }
 
   private def getScalaFiles(version: String, reason: String, scalaOrg: Organization): Seq[File] = {
@@ -299,26 +310,9 @@ class Launcher(
     val (scalaFiles, files) = appFiles(scalaOrg, scalaVersion, id, extra: _*)
     val scalaFiles0 = scalaFiles.map(noVersionScalaJar(scalaOrg, scalaVersion, _))
 
-    val scalaLoader = new URLClassLoader(scalaFiles0.map(_.toURI.toURL).toArray, baseLoader)
+    val scalaProvider = getScalaProvider(scalaFiles0, scalaVersion)
 
-    val libraryJar = scalaFiles0.find(_.getName.startsWith("scala-library")).getOrElse {
-      throw new NoSuchElementException("scala-library JAR")
-    }
-    val compilerJar = scalaFiles0.find(_.getName.startsWith("scala-compiler")).getOrElse {
-      throw new NoSuchElementException("scala-compiler JAR")
-    }
-
-    val scalaProvider = ScalaProvider(
-      this,
-      scalaVersion,
-      scalaLoader,
-      scalaFiles0.toArray,
-      libraryJar,
-      compilerJar,
-      id => app(id, id.version())
-    )
-
-    val loader = new URLClassLoader(files.filterNot(scalaFiles.toSet).map(_.toURI.toURL).toArray, scalaLoader)
+    val loader = new URLClassLoader(files.filterNot(scalaFiles.toSet).map(_.toURI.toURL).toArray, scalaProvider.loader())
     val mainClass0 = loader.loadClass(id.mainClass).asSubclass(classOf[xsbti.AppMain])
 
     AppProvider(
