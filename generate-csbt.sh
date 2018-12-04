@@ -25,6 +25,6 @@ fi
   -i launcher \
   -I launcher:org.scala-sbt:launcher-interface:1.0.4 \
   -o "$OUTPUT" \
-  -J -Djline.shutdownhook=false \
+  --property jline.shutdownhook=false \
   --embed-files=false \
   "$@"

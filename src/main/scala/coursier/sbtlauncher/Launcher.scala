@@ -1,6 +1,6 @@
 package coursier.sbtlauncher
 
-import java.io.{File, OutputStreamWriter}
+import java.io.File
 import java.net.{URL, URLClassLoader}
 import java.nio.file.{Files, StandardCopyOption}
 import java.util.concurrent.ConcurrentHashMap
@@ -13,14 +13,15 @@ import coursier.maven.MavenAttributes
 import coursier.util.Task
 
 import scala.annotation.tailrec
-import scala.concurrent.ExecutionContext
 import scala.language.reflectiveCalls
 
 class Launcher(
   scalaVersion: String,
+  resolutionCacheDirOpt: Option[File],
   scalaJarCache: File,
   componentsCache: File,
-  val ivyHome: File
+  val ivyHome: File,
+  log: String => Unit
 ) extends xsbti.Launcher {
 
   import Launcher._
@@ -103,6 +104,13 @@ class Launcher(
   assert(!repositories.groupBy(_._1).exists(_._2.lengthCompare(1) > 0))
 
   val cachePolicies = CachePolicy.default
+
+  private val resolutionCache = ResolutionCache(
+    resolutionCacheDirOpt.map(_.toPath),
+    repositories.map(_._2),
+    cachePolicies = cachePolicies,
+    log = log
+  )
 
   def fetch(logger: Option[Logger]) = {
     def helper(policy: CachePolicy) =
@@ -194,77 +202,23 @@ class Launcher(
     getScalaProvider(files, version)
   }
 
-  private def getScalaFiles(version: String, reason: String, scalaOrg: Organization): Seq[File] = {
-
-    val initialRes = Resolution(
-      Set(
+  private def getScalaFiles(version: String, reason: String, scalaOrg: Organization): Seq[File] =
+    resolutionCache.artifacts(
+      Seq(
         Dependency(Module(scalaOrg, name"scala-library"), version),
         Dependency(Module(scalaOrg, name"scala-compiler"), version)
       ),
-      forceVersions = Map(
+      Map(
         Module(scalaOrg, name"scala-library") -> version,
         Module(scalaOrg, name"scala-compiler") -> version,
         Module(scalaOrg, name"scala-reflect") -> version
       )
-    )
-
-    val logger =
-      Some(new TermDisplay(
-        new OutputStreamWriter(System.err)
-      ))
-
-    logger.foreach(_.init {
-      System.err.println(s"Resolving Scala $version (organization $scalaOrg)")
-    })
-
-    val res = initialRes.process.run(fetch(logger)).unsafeRun()(ExecutionContext.global)
-
-    logger.foreach { l =>
-      if (l.stopDidPrintSomething())
-        System.err.println(s"Resolved Scala $version (organization $scalaOrg)")
+    ) match {
+      case Left(e) =>
+        Console.err.println(e.describe)
+        sys.exit(1)
+      case Right(files) => files
     }
-
-    if (res.errors.nonEmpty) {
-      Console.err.println(s"Errors:\n${res.errors.map("  " + _).mkString("\n")}")
-      sys.exit(1)
-    }
-
-    if (res.conflicts.nonEmpty) {
-      Console.err.println(s"Conflicts:\n${res.conflicts.map("  " + _).mkString("\n")}")
-      sys.exit(1)
-    }
-
-    if (!res.isDone) {
-      Console.err.println("Did not converge")
-      sys.exit(1)
-    }
-
-    val artifactLogger =
-      Some(new TermDisplay(
-        new OutputStreamWriter(System.err)
-      ))
-
-    artifactLogger.foreach(_.init {
-      System.err.println(s"Fetching Scala $version artifacts (organization $scalaOrg)")
-    })
-
-    val results = Task.gather.gather(tasks(res, artifactLogger)).unsafeRun()(ExecutionContext.global)
-
-    artifactLogger.foreach { l =>
-      if (l.stopDidPrintSomething())
-        System.err.println(s"Fetched Scala $version artifacts (organization $scalaOrg)")
-    }
-
-    val errors = results.collect { case (a, Left(err)) if !a.optional || !err.notFound => (a, err) }
-    val files = results.collect { case (_, Right(f)) => f }
-
-    if (errors.nonEmpty) {
-      Console.err.println(s"Error downloading artifacts:\n${errors.map("  " + _).mkString("\n")}")
-      sys.exit(1)
-    }
-
-    files
-  }
 
   def topLoader: ClassLoader = baseLoader
 
@@ -335,110 +289,42 @@ class Launcher(
 
     val id0 = ApplicationID(id).disableCrossVersion(scalaVersion)
 
-    val initialRes = Resolution(
-      Set(
-        Dependency(Module(scalaOrg, name"scala-library"), scalaVersion),
-        Dependency(Module(scalaOrg, name"scala-compiler"), scalaVersion),
-        Dependency(Module(Organization(id0.groupID), ModuleName(id0.name)), id0.version)
-      ) ++ extra,
-      forceVersions = Map(
-        Module(scalaOrg, name"scala-library") -> scalaVersion,
-        Module(scalaOrg, name"scala-compiler") -> scalaVersion,
-        Module(scalaOrg, name"scala-reflect") -> scalaVersion
+    val files = resolutionCache
+      .artifacts(
+        Seq(
+          Dependency(Module(Organization(id0.groupID), ModuleName(id0.name)), id0.version),
+          Dependency(Module(scalaOrg, name"scala-library"), scalaVersion),
+          Dependency(Module(scalaOrg, name"scala-compiler"), scalaVersion)
+        ) ++ extra,
+        Map(
+          Module(scalaOrg, name"scala-library") -> scalaVersion,
+          Module(scalaOrg, name"scala-compiler") -> scalaVersion,
+          Module(scalaOrg, name"scala-reflect") -> scalaVersion
+        )
       )
-    )
+      .left.map { e =>
+        System.err.println(e.describe)
+        sys.exit(1)
+      }
+      .merge
 
-    val logger =
-      Some(new TermDisplay(
-        new OutputStreamWriter(System.err)
-      ))
-
-    val extraMsg =
-      if (extra.isEmpty)
-        ""
-      else
-        s" (plus ${extra.length} dependencies)"
-
-    logger.foreach(_.init {
-      System.err.println(s"Resolving ${id0.groupID}:${id0.name}:${id0.version}$extraMsg")
-    })
-
-    val res = initialRes.process.run(fetch(logger)).unsafeRun()(ExecutionContext.global)
-
-    logger.foreach { l =>
-      if (l.stopDidPrintSomething())
-        System.err.println(s"Resolved ${id0.groupID}:${id0.name}:${id0.version}$extraMsg")
-    }
-
-    if (res.errors.nonEmpty) {
-      Console.err.println(s"Errors:\n${res.errors.map("  " + _).mkString("\n")}")
-      sys.exit(1)
-    }
-
-    if (res.conflicts.nonEmpty) {
-      Console.err.println(s"Conflicts:\n${res.conflicts.map("  " + _).mkString("\n")}")
-      sys.exit(1)
-    }
-
-    if (!res.isDone) {
-      Console.err.println("Did not converge")
-      sys.exit(1)
-    }
-
-    val artifactLogger =
-      Some(new TermDisplay(
-        new OutputStreamWriter(System.err)
-      ))
-
-    artifactLogger.foreach(_.init {
-      System.err.println(s"Fetching ${id0.groupID}:${id0.name}:${id0.version} artifacts")
-    })
-
-    val results = Task.gather.gather(tasks(res, artifactLogger)).unsafeRun()(ExecutionContext.global)
-
-    artifactLogger.foreach { l =>
-      if (l.stopDidPrintSomething())
-        System.err.println(s"Fetched ${id0.groupID}:${id0.name}:${id0.version} artifacts")
-    }
-
-    val errors = results.collect { case (a, Left(err)) if !a.optional || !err.notFound => (a, err) }
-    val files = results.collect { case (_, Right(f)) => f }
-
-    if (errors.nonEmpty) {
-      Console.err.println(s"Error downloading artifacts:\n${errors.map("  " + _).mkString("\n")}")
-      sys.exit(1)
-    }
-
-    val scalaSubRes = res.subset(
-      Set(
-        Dependency(Module(scalaOrg, name"scala-library"), scalaVersion),
-        Dependency(Module(scalaOrg, name"scala-compiler"), scalaVersion)
+    val scalaFiles = resolutionCache
+      .artifacts(
+        Seq(
+          Dependency(Module(scalaOrg, name"scala-library"), scalaVersion),
+          Dependency(Module(scalaOrg, name"scala-compiler"), scalaVersion)
+        ),
+        Map(
+          Module(scalaOrg, name"scala-library") -> scalaVersion,
+          Module(scalaOrg, name"scala-compiler") -> scalaVersion,
+          Module(scalaOrg, name"scala-reflect") -> scalaVersion
+        )
       )
-    )
-
-    val scalaArtifactLogger =
-      Some(new TermDisplay(
-        new OutputStreamWriter(System.err)
-      ))
-
-    scalaArtifactLogger.foreach(_.init {
-      System.err.println(s"Fetching ${id0.groupID}:${id0.name}:${id0.version} Scala artifacts")
-    })
-
-    val scalaResults = Task.gather.gather(tasks(scalaSubRes, scalaArtifactLogger)).unsafeRun()(ExecutionContext.global)
-
-    scalaArtifactLogger.foreach { l =>
-      if (l.stopDidPrintSomething())
-        System.err.println(s"Fetched ${id0.groupID}:${id0.name}:${id0.version} Scala artifacts")
-    }
-
-    val scalaErrors = scalaResults.collect { case (a, Left(err)) if !a.optional || !err.notFound => (a, err) }
-    val scalaFiles = scalaResults.collect { case (_, Right(f)) => f }
-
-    if (scalaErrors.nonEmpty) {
-      Console.err.println(s"Error downloading artifacts:\n${scalaErrors.map("  " + _).mkString("\n")}")
-      sys.exit(1)
-    }
+      .left.map { e =>
+        System.err.println(e.describe)
+        sys.exit(1)
+      }
+      .merge
 
     (scalaFiles, files)
   }
@@ -487,73 +373,18 @@ class Launcher(
       case other => other
     }
 
-    lazy val res = {
-
-      val initialRes = Resolution(
-        Set(
-          Dependency(mod"org.scala-sbt:interface", sbtVersion0, transitive = false)
-        )
-      )
-
-      val logger =
-        Some(new TermDisplay(
-          new OutputStreamWriter(System.err)
-        ))
-
-      logger.foreach(_.init {
-        System.err.println(s"Resolving org.scala-sbt:interface:$sbtVersion0")
-      })
-
-      val res = initialRes.process.run(fetch(logger)).unsafeRun()(ExecutionContext.global)
-
-      logger.foreach { l =>
-        if (l.stopDidPrintSomething())
-          System.err.println(s"Resolved org.scala-sbt:interface:$sbtVersion0")
-      }
-
-      if (res.errors.nonEmpty) {
-        Console.err.println(s"Errors:\n${res.errors.map("  " + _).mkString("\n")}")
-        sys.exit(1)
-      }
-
-      if (res.conflicts.nonEmpty) {
-        Console.err.println(s"Conflicts:\n${res.conflicts.map("  " + _).mkString("\n")}")
-        sys.exit(1)
-      }
-
-      if (!res.isDone) {
-        Console.err.println("Did not converge")
-        sys.exit(1)
-      }
-
-      res
-    }
-
     lazy val interfaceJar = {
 
-      val artifactLogger =
-        Some(new TermDisplay(
-          new OutputStreamWriter(System.err)
-        ))
-
-      artifactLogger.foreach(_.init {
-        System.err.println(s"Fetching org.scala-sbt:interface:$sbtVersion0 artifacts")
-      })
-
-      val results = Task.gather.gather(tasks(res, artifactLogger)).unsafeRun()(ExecutionContext.global)
-
-      artifactLogger.foreach { l =>
-        if (l.stopDidPrintSomething())
-          System.err.println(s"Fetched org.scala-sbt:interface:$sbtVersion0 artifacts")
-      }
-
-      val errors = results.collect { case (a, Left(err)) if !a.optional || !err.notFound => (a, err) }
-      val files = results.collect { case (_, Right(f)) => f }
-
-      if (errors.nonEmpty) {
-        Console.err.println(s"Error downloading artifacts:\n${errors.map("  " + _).mkString("\n")}")
-        sys.exit(1)
-      }
+      val files = resolutionCache
+        .artifacts(
+          Seq(Dependency(mod"org.scala-sbt:interface", sbtVersion0, transitive = false)),
+          Map()
+        )
+        .left.map { e =>
+          System.err.println(e.describe)
+          sys.exit(1)
+        }
+        .merge
 
       files match {
         case Nil =>
@@ -567,29 +398,17 @@ class Launcher(
 
     lazy val compilerInterfaceSourcesJar = {
 
-      val artifactLogger =
-        Some(new TermDisplay(
-          new OutputStreamWriter(System.err)
-        ))
-
-      artifactLogger.foreach(_.init {
-        System.err.println(s"Fetching org.scala-sbt:interface:$sbtVersion0 source artifacts")
-      })
-
-      val results = Task.gather.gather(tasks(res, artifactLogger, Some(Seq(Classifier.sources)))).unsafeRun()(ExecutionContext.global)
-
-      artifactLogger.foreach { l =>
-        if (l.stopDidPrintSomething())
-          System.err.println(s"Fetched org.scala-sbt:interface:$sbtVersion0 source artifacts")
-      }
-
-      val errors = results.collect { case (a, Left(err)) if !a.optional || !err.notFound => (a, err) }
-      val files = results.collect { case (_, Right(f)) => f }
-
-      if (errors.nonEmpty) {
-        Console.err.println(s"Error downloading artifacts:\n${errors.map("  " + _).mkString("\n")}")
-        sys.exit(1)
-      }
+      val files = resolutionCache
+        .artifacts(
+          Seq(Dependency(mod"org.scala-sbt:interface", sbtVersion0, transitive = false)),
+          Map(),
+          Some(Seq(Classifier.sources))
+        )
+        .left.map { e =>
+          System.err.println(e.describe)
+          sys.exit(1)
+        }
+        .merge
 
       files match {
         case Nil =>
@@ -606,78 +425,20 @@ class Launcher(
 
   private def sbtCompilerInterfaceSrcComponentFile(sbtVersion: String): File = {
 
-    val res = {
-
-      val initialRes = Resolution(
-        Set(
-          Dependency(mod"org.scala-sbt:compiler-interface", sbtVersion, transitive = false)
+    def files0(classifiers: Option[Seq[Classifier]]) =
+      resolutionCache
+        .artifacts(
+          Seq(Dependency(mod"org.scala-sbt:compiler-interface", sbtVersion, transitive = false)),
+          Map(),
+          classifiers
         )
-      )
-
-      val logger =
-        Some(new TermDisplay(
-          new OutputStreamWriter(System.err)
-        ))
-
-      logger.foreach(_.init {
-        System.err.println(s"Resolving org.scala-sbt:compiler-interface:$sbtVersion")
-      })
-
-      val res = initialRes.process.run(fetch(logger)).unsafeRun()(ExecutionContext.global)
-
-      logger.foreach { l =>
-        if (l.stopDidPrintSomething())
-          System.err.println(s"Resolved org.scala-sbt:compiler-interface:$sbtVersion")
-      }
-
-      if (res.errors.nonEmpty) {
-        Console.err.println(s"Errors:\n${res.errors.map("  " + _).mkString("\n")}")
+        .left.map { e =>
+        System.err.println(e.describe)
         sys.exit(1)
       }
+        .merge
 
-      if (res.conflicts.nonEmpty) {
-        Console.err.println(s"Conflicts:\n${res.conflicts.map("  " + _).mkString("\n")}")
-        sys.exit(1)
-      }
-
-      if (!res.isDone) {
-        Console.err.println("Did not converge")
-        sys.exit(1)
-      }
-
-      res
-    }
-
-    val files = {
-
-      val artifactLogger =
-        Some(new TermDisplay(
-          new OutputStreamWriter(System.err)
-        ))
-
-      artifactLogger.foreach(_.init {
-        System.err.println(s"Fetching org.scala-sbt:compiler-interface:$sbtVersion source artifacts")
-      })
-
-      val results = Task.gather.gather(
-        tasks(res, artifactLogger, None) ++
-          tasks(res, artifactLogger, Some(Seq(Classifier.sources)))
-      ).unsafeRun()(ExecutionContext.global)
-
-      artifactLogger.foreach { l =>
-        if (l.stopDidPrintSomething())
-          System.err.println(s"Fetched org.scala-sbt:compiler-interface:$sbtVersion source artifacts")
-      }
-
-      val errors = results.collect { case (a, Left(err)) if !a.optional || !err.notFound => (a, err) }
-
-      if (errors.nonEmpty) {
-        Console.err.println(s"Error downloading artifacts:\n${errors.map("  " + _).mkString("\n")}")
-        sys.exit(1)
-      }
-
-      results.collect { case (_, Right(f)) => f }
-    }
+    val files = files0(None) ++ files0(Some(Seq(Classifier.sources)))
 
     files
       .find(f =>

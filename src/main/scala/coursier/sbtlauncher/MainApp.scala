@@ -127,10 +127,12 @@ object MainApp extends CaseApp[MainOptions] {
       // when running the clean command from sbt.
       val launcher = new Launcher(
         scalaVersion,
+        Some(new File(s"${sys.props("user.dir")}/project/target/coursier-resolution-cache")),
         new File(s"${sys.props("user.dir")}/project/target/scala-jars"),
         // FIXME Add org & moduleName in this path
         new File(s"${sys.props("user.dir")}/project/target/sbt-components/components_scala$scalaVersion${if (sbtVersion0.isEmpty) "" else "_sbt" + sbtVersion0}"),
-        new File(s"${sys.props("user.dir")}/project/target/ivy2")
+        new File(s"${sys.props("user.dir")}/project/target/ivy2"),
+        log
       )
 
       log("Registering scala components")
