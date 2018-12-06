@@ -3,7 +3,7 @@ set -e
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
-VERSION="${VERSION:-1.1.0-M2}"
+VERSION="${VERSION:-1.1.0}"
 OUTPUT="${OUTPUT:-csbt}"
 
 if which coursier >/dev/null 2>&1; then
