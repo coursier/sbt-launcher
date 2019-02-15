@@ -17,7 +17,7 @@ lazy val `sbt-launcher` = project
   .in(file("."))
   .enablePlugins(PackPlugin)
   .settings(
-    scalaVersion := "2.12.7",
+    scalaVersion := "2.12.8",
     scalacOptions ++= Seq("-feature", "-deprecation"),
     libraryDependencies ++= Seq(
       "io.get-coursier" %% "coursier" % "1.1.0-M9",
