@@ -5,14 +5,11 @@ import java.net.{URL, URLClassLoader}
 import java.nio.file.{Files, StandardCopyOption}
 import java.util.concurrent.ConcurrentHashMap
 
-import coursier.Cache.Logger
 import coursier._
-import coursier.core.{Classifier, Extension, Type}
+import coursier.cache.LocalRepositories
+import coursier.core.Classifier
 import coursier.ivy.IvyRepository
-import coursier.maven.MavenAttributes
-import coursier.util.Task
 
-import scala.annotation.tailrec
 import scala.language.reflectiveCalls
 
 class Launcher(
@@ -26,120 +23,15 @@ class Launcher(
 
   import Launcher._
 
-  private def noVersionScalaJar(scalaOrg: Organization, scalaVersion: String, jar: File): File = {
-
-    val dir = new File(scalaJarCache, s"${scalaOrg.value}/$scalaVersion")
-    dir.mkdirs()
-
-    val origName = jar.getName
-
-    val destNameOpt =
-      if (origName == s"scala-library-$scalaVersion.jar")
-        Some("scala-library.jar")
-      else if (origName == s"scala-compiler-$scalaVersion.jar")
-        Some("scala-compiler.jar")
-      else if (origName == s"scala-reflect-$scalaVersion.jar")
-        Some("scala-reflect.jar")
-      else
-        None
-
-    destNameOpt match {
-      case None =>
-        jar
-      case Some(destName) =>
-        val dest = new File(dir, destName)
-        if (!dest.exists())
-          // FIXME Two processes doing that at the same time would clash
-          Files.copy(
-            jar.toPath,
-            dest.toPath,
-            StandardCopyOption.COPY_ATTRIBUTES
-          )
-        dest
-    }
-  }
-
   private val componentProvider = new ComponentProvider(componentsCache)
-
-  private lazy val baseLoader = {
-
-    @tailrec
-    def rootLoader(cl: ClassLoader): ClassLoader =
-      if (cl == null)
-        sys.error("Cannot find base loader")
-      else {
-        val isLauncherLoader =
-          try {
-            cl
-              .asInstanceOf[AnyRef { def getIsolationTargets: Array[String] }]
-              .getIsolationTargets
-              .contains("launcher")
-          } catch {
-            case _: Throwable => false
-          }
-
-        if (isLauncherLoader)
-          cl
-        else
-          rootLoader(cl.getParent)
-      }
-
-    rootLoader(Thread.currentThread().getContextClassLoader)
-  }
-
-  val repositoryIdPrefix = "coursier-launcher-"
-
-  val repositories = Seq(
-    // mmh, ID "local" seems to be required for publishLocal to be fine if we're launching sbt
-    "local" -> Cache.ivy2Local,
-    s"${repositoryIdPrefix}central" -> MavenRepository("https://repo1.maven.org/maven2", sbtAttrStub = true),
-    s"${repositoryIdPrefix}typesafe-ivy-releases" -> IvyRepository.parse(
-      "https://repo.typesafe.com/typesafe/ivy-releases/[organization]/[module]/[revision]/[type]s/[artifact](-[classifier]).[ext]"
-    ).left.map(sys.error).merge,
-    s"${repositoryIdPrefix}sbt-plugin-releases" -> IvyRepository.parse(
-      "https://repo.scala-sbt.org/scalasbt/sbt-plugin-releases/[organization]/[module](/scala_[scalaVersion])(/sbt_[sbtVersion])/[revision]/[type]s/[artifact](-[classifier]).[ext]"
-    ).left.map(sys.error).merge
-  )
-
-  assert(!repositories.groupBy(_._1).exists(_._2.lengthCompare(1) > 0))
-
-  val cachePolicies = CachePolicy.default
 
   private val resolutionCache = ResolutionCache(
     resolutionCacheDirOpt.map(_.toPath),
     repositories.map(_._2),
-    cachePolicies = cachePolicies,
     log = log
   )
 
-  def fetch(logger: Option[Logger]) = {
-    def helper(policy: CachePolicy) =
-      Cache.fetch[Task](cachePolicy = policy, logger = logger)
-
-    val f = cachePolicies.map(helper)
-
-    Fetch.from(repositories.map(_._2), f.head, f.tail: _*)
-  }
-
-  def tasks(res: Resolution, logger: Option[Logger], classifiersOpt: Option[Seq[Classifier]] = None) = {
-    val a = res.dependencyArtifacts(classifiersOpt)
-
-    val keepArtifactTypes = classifiersOpt.fold(Set(Type.jar, Type.bundle))(c => c.map(c => MavenAttributes.classifierExtensionDefaultTypes.getOrElse((c, Extension.jar), ???)).toSet)
-
-    a.collect {
-      case (_, attr, artifact) if keepArtifactTypes(attr.`type`) =>
-        def file(policy: CachePolicy) =
-          Cache.file[Task](
-            artifact,
-            cachePolicy = policy,
-            logger = logger
-          )
-
-        (file(cachePolicies.head) /: cachePolicies.tail)(_ orElse file(_))
-          .run
-          .map(artifact.->)
-      }
-  }
+  private val scalaProviderCache = new ConcurrentHashMap[(String, Organization), xsbti.ScalaProvider]
 
 
   def isOverrideRepositories = false // ???
@@ -165,8 +57,6 @@ class Launcher(
     scalaProviderCache.get(key)
   }
 
-  private val scalaProviderCache = new ConcurrentHashMap[(String, Organization), xsbti.ScalaProvider]
-
   private def getScalaProvider(files: Seq[File], version: String): xsbti.ScalaProvider = {
 
     // The way these JARs are found is kind of flaky - there are ways to get the right JARs with 100% certainty
@@ -180,7 +70,7 @@ class Launcher(
       throw new NoSuchElementException("scala-compiler JAR")
     }
 
-    val libraryLoader = new URLClassLoader(Array(libraryJar.toURI.toURL), baseLoader)
+    val libraryLoader = new URLClassLoader(Array(libraryJar.toURI.toURL), topLoader)
     val loader = new URLClassLoader(otherJars.map(_.toURI.toURL).toArray, libraryLoader)
 
     ScalaProvider(
@@ -197,30 +87,22 @@ class Launcher(
 
   private def getScala0(version: String, reason: String, scalaOrg: Organization): xsbti.ScalaProvider = {
 
-    val files = getScalaFiles(version, reason, scalaOrg).map(noVersionScalaJar(scalaOrg, version, _))
+    val files = getScalaFiles(version, reason, scalaOrg).map(noVersionScalaJar(scalaJarCache, scalaOrg, version, _))
 
     getScalaProvider(files, version)
   }
 
   private def getScalaFiles(version: String, reason: String, scalaOrg: Organization): Seq[File] =
-    resolutionCache.artifacts(
+    resolutionCache.artifactsOrExit(
       Seq(
         Dependency(Module(scalaOrg, name"scala-library"), version),
         Dependency(Module(scalaOrg, name"scala-compiler"), version)
       ),
-      Map(
-        Module(scalaOrg, name"scala-library") -> version,
-        Module(scalaOrg, name"scala-compiler") -> version,
-        Module(scalaOrg, name"scala-reflect") -> version
-      )
-    ) match {
-      case Left(e) =>
-        Console.err.println(e.describe)
-        sys.exit(1)
-      case Right(files) => files
-    }
+      forceScala = scalaOrg -> version
+    )
 
-  def topLoader: ClassLoader = baseLoader
+  lazy val topLoader: ClassLoader =
+    classOf[xsbti.Launcher].getClassLoader
 
   def appRepositories: Array[xsbti.Repository] =
     repositories.map {
@@ -262,7 +144,7 @@ class Launcher(
 
     val scalaOrg = defaultScalaOrg
     val (scalaFiles, files) = appFiles(scalaOrg, scalaVersion, id, extra: _*)
-    val scalaFiles0 = scalaFiles.map(noVersionScalaJar(scalaOrg, scalaVersion, _))
+    val scalaFiles0 = scalaFiles.map(noVersionScalaJar(scalaJarCache, scalaOrg, scalaVersion, _))
 
     val scalaProvider = getScalaProvider(scalaFiles0, scalaVersion)
 
@@ -289,42 +171,22 @@ class Launcher(
 
     val id0 = ApplicationID(id).disableCrossVersion(scalaVersion)
 
-    val files = resolutionCache
-      .artifacts(
-        Seq(
-          Dependency(Module(Organization(id0.groupID), ModuleName(id0.name)), id0.version),
-          Dependency(Module(scalaOrg, name"scala-library"), scalaVersion),
-          Dependency(Module(scalaOrg, name"scala-compiler"), scalaVersion)
-        ) ++ extra,
-        Map(
-          Module(scalaOrg, name"scala-library") -> scalaVersion,
-          Module(scalaOrg, name"scala-compiler") -> scalaVersion,
-          Module(scalaOrg, name"scala-reflect") -> scalaVersion
-        )
-      )
-      .left.map { e =>
-        System.err.println(e.describe)
-        sys.exit(1)
-      }
-      .merge
+    val files = resolutionCache.artifactsOrExit(
+      extra ++ Seq(
+        Dependency(Module(Organization(id0.groupID), ModuleName(id0.name)), id0.version),
+        Dependency(Module(scalaOrg, name"scala-library"), scalaVersion),
+        Dependency(Module(scalaOrg, name"scala-compiler"), scalaVersion)
+      ),
+      forceScala = scalaOrg -> scalaVersion
+    )
 
-    val scalaFiles = resolutionCache
-      .artifacts(
-        Seq(
-          Dependency(Module(scalaOrg, name"scala-library"), scalaVersion),
-          Dependency(Module(scalaOrg, name"scala-compiler"), scalaVersion)
-        ),
-        Map(
-          Module(scalaOrg, name"scala-library") -> scalaVersion,
-          Module(scalaOrg, name"scala-compiler") -> scalaVersion,
-          Module(scalaOrg, name"scala-reflect") -> scalaVersion
-        )
-      )
-      .left.map { e =>
-        System.err.println(e.describe)
-        sys.exit(1)
-      }
-      .merge
+    val scalaFiles = resolutionCache.artifactsOrExit(
+      Seq(
+        Dependency(Module(scalaOrg, name"scala-library"), scalaVersion),
+        Dependency(Module(scalaOrg, name"scala-compiler"), scalaVersion)
+      ),
+      forceScala = scalaOrg -> scalaVersion
+    )
 
     (scalaFiles, files)
   }
@@ -368,77 +230,26 @@ class Launcher(
 
   private def sbtInterfaceComponentFiles(sbtVersion: String): (File, File) = {
 
-    val sbtVersion0 = sbtVersion match {
-      case "1.2.1" => "1.2.0"
+    val selectedSbtVersion = sbtVersion match {
+      case "1.2.1" => "1.2.0" // not sure why this is required…
       case other => other
     }
 
-    lazy val interfaceJar = {
+    val dep = Dependency(mod"org.scala-sbt:interface", selectedSbtVersion)
 
-      val files = resolutionCache
-        .artifacts(
-          Seq(Dependency(mod"org.scala-sbt:interface", sbtVersion0, transitive = false)),
-          Map()
-        )
-        .left.map { e =>
-          System.err.println(e.describe)
-          sys.exit(1)
-        }
-        .merge
-
-      files match {
-        case Nil =>
-          throw new NoSuchElementException(s"interface JAR for sbt $sbtVersion0")
-        case Seq(jar) =>
-          jar
-        case _ =>
-          sys.error(s"Too many interface JAR for sbt $sbtVersion0: ${files.mkString(", ")}")
-      }
-    }
-
-    lazy val compilerInterfaceSourcesJar = {
-
-      val files = resolutionCache
-        .artifacts(
-          Seq(Dependency(mod"org.scala-sbt:interface", sbtVersion0, transitive = false)),
-          Map(),
-          Some(Seq(Classifier.sources))
-        )
-        .left.map { e =>
-          System.err.println(e.describe)
-          sys.exit(1)
-        }
-        .merge
-
-      files match {
-        case Nil =>
-          throw new NoSuchElementException(s"compiler-interface source JAR for sbt $sbtVersion0")
-        case Seq(jar) =>
-          jar
-        case _ =>
-          sys.error(s"Too many compiler-interface source JAR for sbt $sbtVersion0: ${files.mkString(", ")}")
-      }
-    }
+    val interfaceJar = resolutionCache.artifactOrExit(dep)
+    val compilerInterfaceSourcesJar = resolutionCache.artifactOrExit(dep, classifiers = Seq(Classifier.sources))
 
     (interfaceJar, compilerInterfaceSourcesJar)
   }
 
   private def sbtCompilerInterfaceSrcComponentFile(sbtVersion: String): File = {
 
-    def files0(classifiers: Option[Seq[Classifier]]) =
-      resolutionCache
-        .artifacts(
-          Seq(Dependency(mod"org.scala-sbt:compiler-interface", sbtVersion, transitive = false)),
-          Map(),
-          classifiers
-        )
-        .left.map { e =>
-        System.err.println(e.describe)
-        sys.exit(1)
-      }
-        .merge
+    val deps = Seq(Dependency(mod"org.scala-sbt:compiler-interface", sbtVersion, transitive = false))
 
-    val files = files0(None) ++ files0(Some(Seq(Classifier.sources)))
+    val files =
+      resolutionCache.artifactsOrExit(deps) ++
+        resolutionCache.artifactsOrExit(deps, classifiers = Seq(Classifier.sources))
 
     files
       .find(f =>
@@ -446,13 +257,67 @@ class Launcher(
           f.getName.endsWith("-sources.jar")
       )
       .getOrElse {
-        sys.error("compiler-interface-src not found")
+        System.err.println("compiler-interface-src not found")
+        sys.exit(1)
       }
   }
 }
 
 object Launcher {
 
-  val defaultScalaOrg = org"org.scala-lang"
+  private def defaultScalaOrg = org"org.scala-lang"
+  private def repositoryIdPrefix = "coursier-launcher-"
+
+  private val repositories = Seq(
+    // FIXME Use defaults from coursier.Resolve.defaultRepositories here?
+    // mmh, ID "local" seems to be required for publishLocal to be fine if we're launching sbt
+    "local" -> LocalRepositories.ivy2Local,
+    s"${repositoryIdPrefix}central" -> MavenRepository("https://repo1.maven.org/maven2", sbtAttrStub = true),
+    s"${repositoryIdPrefix}typesafe-ivy-releases" -> IvyRepository.parse(
+      "https://repo.typesafe.com/typesafe/ivy-releases/[organization]/[module]/[revision]/[type]s/[artifact](-[classifier]).[ext]"
+    ).left.map(sys.error).merge,
+    s"${repositoryIdPrefix}sbt-plugin-releases" -> IvyRepository.parse(
+      "https://repo.scala-sbt.org/scalasbt/sbt-plugin-releases/[organization]/[module](/scala_[scalaVersion])(/sbt_[sbtVersion])/[revision]/[type]s/[artifact](-[classifier]).[ext]"
+    ).left.map(sys.error).merge
+  )
+
+  assert(!repositories.groupBy(_._1).exists(_._2.lengthCompare(1) > 0))
+
+  private def noVersionScalaJar(
+    scalaJarCache: File,
+    scalaOrg: Organization,
+    scalaVersion: String,
+    jar: File
+  ): File = {
+
+    val origName = jar.getName
+
+    val destNameOpt =
+      if (origName == s"scala-library-$scalaVersion.jar")
+        Some("scala-library.jar")
+      else if (origName == s"scala-compiler-$scalaVersion.jar")
+        Some("scala-compiler.jar")
+      else if (origName == s"scala-reflect-$scalaVersion.jar")
+        Some("scala-reflect.jar")
+      else
+        None
+
+    destNameOpt match {
+      case None =>
+        jar
+      case Some(destName) =>
+        val dest = new File(scalaJarCache, s"${scalaOrg.value}/$scalaVersion/$destName")
+        if (!dest.exists()) {
+          // FIXME Two processes doing that at the same time would clash
+          Files.createDirectories(jar.toPath.getParent)
+          Files.copy(
+            jar.toPath,
+            dest.toPath,
+            StandardCopyOption.COPY_ATTRIBUTES
+          )
+        }
+        dest
+    }
+  }
 
 }

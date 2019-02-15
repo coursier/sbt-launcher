@@ -1,137 +1,61 @@
 package coursier.sbtlauncher
 
-import java.io.{File, OutputStreamWriter}
+import java.io.File
 import java.math.BigInteger
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path}
 import java.security.MessageDigest
 
-import coursier.Cache.Logger
-import coursier.core.{Artifact, Classifier, Extension, Type}
-import coursier.maven.MavenAttributes
-import coursier.paths.CachePath
-import coursier.{Cache, CachePolicy, Dependency, Fetch, FileError, Module, Resolution, TermDisplay}
-import coursier.util.Task
-
-import scala.concurrent.ExecutionContext
+import coursier.cache.{FileCache, ProgressBarLogger}
+import coursier.core.{Artifact, Classifier, Organization}
+import coursier.params.ResolutionParams
+import coursier.{Dependency, Fetch, Module, moduleNameString}
 
 final case class ResolutionCache(
   resolutionCacheDirOpt: Option[Path],
   repositories: Seq[coursier.core.Repository],
-  cacheDir: File = Cache.default,
-  cachePolicies: Seq[CachePolicy] = CachePolicy.default,
   log: String => Unit = _ => ()
 ) {
 
   import ResolutionCache._
 
-  private def fetch(logger: Option[Logger]) = {
-    def helper(policy: CachePolicy) =
-      Cache.fetch[Task](cachePolicy = policy, logger = logger)
-
-    val f = cachePolicies.map(helper)
-
-    Fetch.from(repositories, f.head, f.tail: _*)
-  }
-
-  private def tasks(res: Resolution, logger: Option[Logger], classifiersOpt: Option[Seq[Classifier]] = None) = {
-    val a = res.dependencyArtifacts(classifiersOpt)
-
-    val keepArtifactTypes = classifiersOpt.fold(Set(Type.jar, Type.bundle))(c => c.map(c => MavenAttributes.classifierExtensionDefaultTypes.getOrElse((c, Extension.jar), ???)).toSet)
-
-    a.collect {
-      case (_, attr, artifact) if keepArtifactTypes(attr.`type`) =>
-        def file(policy: CachePolicy) =
-          Cache.file[Task](
-            artifact,
-            cachePolicy = policy,
-            logger = logger
-          )
-
-        (file(cachePolicies.head) /: cachePolicies.tail)(_ orElse file(_))
-          .run
-          .map(artifact.->)
-      }
-  }
+  private val cache = FileCache.create().copy(logger = ProgressBarLogger.create())
 
   private def actualArtifacts(
     dependencies: Seq[Dependency],
     forceVersion: Map[Module, String],
     classifiersOpt: Option[Seq[Classifier]]
-  ): Either[ResolutionError, Seq[(Artifact, File)]] =
+  ): Either[Exception, Seq[(Artifact, File)]] =
     if (dependencies.isEmpty)
       Right(Nil)
     else {
 
-      val name = s"${dependencies.head.module}:${dependencies.head.version}"
+      val extra =
+        if (dependencies.lengthCompare(1) > 0)
+          s" and ${dependencies.length - 1} other dependencies"
+        else
+          ""
+      val name = s"${dependencies.head.module}:${dependencies.head.version}" + extra
 
-      val initialRes = Resolution(
-        dependencies.toSet,
-        forceVersions = forceVersion
-      )
-
-      val logger =
-        Some(new TermDisplay(
-          new OutputStreamWriter(System.err)
-        ))
-
-      log(s"Resolving $name")
-
-      logger.foreach(_.init {
-        System.err.println(s"Resolving $name")
-      })
-
-      val res = initialRes.process.run(fetch(logger)).unsafeRun()(ExecutionContext.global)
-
-      logger.foreach { l =>
-        if (l.stopDidPrintSomething())
+      Fetch.fetchEither(
+        dependencies,
+        repositories,
+        resolutionParams = ResolutionParams()
+          .withForceVersion(forceVersion),
+        cache = cache,
+        beforeResolutionLogging = () => {
+          System.err.println(s"Resolving $name")
+        },
+        afterResolutionLogging = _ => {
           System.err.println(s"Resolved $name")
-      }
-
-      log(s"Resolved $name")
-
-      if (res.errors.nonEmpty)
-        Left(ResolutionError.MetadataErrors(res.errors))
-      else {
-
-        if (res.conflicts.nonEmpty)
-          Left(ResolutionError.Conflicts(res.conflicts))
-        else {
-
-          if (!res.isDone)
-            Left(ResolutionError.DidNotConverge)
-          else {
-
-            val artifactLogger =
-              Some(new TermDisplay(
-                new OutputStreamWriter(System.err)
-              ))
-
-            log(s"Fetching $name artifacts")
-
-            artifactLogger.foreach(_.init {
-              System.err.println(s"Fetching $name artifacts")
-            })
-
-            val results = Task.gather.gather(tasks(res, artifactLogger, classifiersOpt)).unsafeRun()(ExecutionContext.global)
-
-            artifactLogger.foreach { l =>
-              if (l.stopDidPrintSomething())
-                System.err.println(s"Fetched $name artifacts")
-            }
-
-            log(s"Fetched $name artifacts")
-
-            val errors = results.collect { case (a, Left(err)) if !a.optional || !err.notFound => (a, err) }
-            val files = results.collect { case (a, Right(f)) => (a, f) }
-
-            if (errors.nonEmpty)
-              Left(ResolutionError.DownloadErrors(errors))
-            else
-              Right(files)
-          }
+        },
+        beforeFetchLogging = () => {
+          System.err.println(s"Fetching $name artifacts")
+        },
+        afterFetchLogging = _ => {
+          System.err.println(s"Fetched $name artifacts")
         }
-      }
+      ).map(_._2)
     }
 
 
@@ -185,11 +109,8 @@ final case class ResolutionCache(
       val fileOpts = artifacts.map { a =>
         // TODO Support authentication (user argument of CachePath.localFile)
         // TODO Check changing
-        val f = CachePath.localFile(a.url, Cache.default, null, false)
-        if (f.isFile)
-          Some(f)
-        else
-          None
+        Some(cache.localFile(a.url))
+          .filter(_.isFile)
       }
 
       if (fileOpts.exists(_.isEmpty))
@@ -249,9 +170,10 @@ final case class ResolutionCache(
 
   def artifacts(
     dependencies: Seq[Dependency],
-    forceVersion: Map[Module, String],
-    classifiersOpt: Option[Seq[Classifier]] = None
-  ): Either[ResolutionError, Seq[File]] = {
+    forceVersion: Map[Module, String] = Map(),
+    classifiers: Seq[Classifier] = null,
+    forceScala: (Organization, String) = null
+  ): Either[Exception, Seq[File]] = {
 
     val dependenciesRepr =
       // like for repositoriesRepr, toString might not be too suited for that…
@@ -259,8 +181,17 @@ final case class ResolutionCache(
         .map(_.toString)
         .sorted
 
+    val forceVersion0 = forceVersion ++ {
+      Option(forceScala) match {
+        case None => Seq()
+        case Some((org, sv)) =>
+          Seq(name"scala-library", name"scala-compiler", name"scala-reflect", name"scalap")
+            .map(n => Module(org, n) -> sv)
+      }
+    }
+
     val forceVersionsRepr =
-      forceVersion
+      forceVersion0
         .toVector
         .map {
           case (m, v) =>
@@ -269,7 +200,7 @@ final case class ResolutionCache(
         .sorted
 
     val classifiersRepr =
-      classifiersOpt.fold("No classifiers") { l =>
+      Option(classifiers).fold("No classifiers") { l =>
         "Classifiers\n" + l.map("  " + _).mkString("\n")
       }
 
@@ -282,7 +213,7 @@ final case class ResolutionCache(
       case Some(files) =>
         Right(files)
       case None =>
-        actualArtifacts(dependencies, forceVersion, classifiersOpt)
+        actualArtifacts(dependencies, forceVersion0, Option(classifiers))
           .right
           .map { l =>
             // optional set to false, as the artifacts we're handed here were all found
@@ -291,6 +222,50 @@ final case class ResolutionCache(
           }
     }
   }
+
+  def artifactsOrExit(
+    dependencies: Seq[Dependency],
+    forceVersion: Map[Module, String] = Map(),
+    classifiers: Seq[Classifier] = null,
+    forceScala: (Organization, String) = null
+  ): Seq[File] =
+    artifacts(
+      dependencies,
+      forceVersion,
+      classifiers,
+      forceScala
+    ) match {
+      case Left(err) =>
+        System.err.println(err.getMessage)
+        sys.exit(1)
+      case Right(files) =>
+        files
+    }
+
+  def artifactOrExit(
+    dependency: Dependency,
+    forceVersion: Map[Module, String] = Map(),
+    classifiers: Seq[Classifier] = null,
+    forceScala: (Organization, String) = null
+  ): File =
+    artifacts(
+      Seq(dependency.copy(transitive = false)),
+      forceVersion,
+      classifiers,
+      forceScala
+    ) match {
+      case Left(err) =>
+        System.err.println(err.getMessage)
+        sys.exit(1)
+      case Right(Nil) =>
+        System.err.println(s"No JAR found for ${dependency.module}:${dependency.version}")
+        sys.exit(1)
+      case Right(Seq(file)) =>
+        file
+      case Right(_) =>
+        System.err.println(s"Too many JARs found for ${dependency.module}:${dependency.version}")
+        sys.exit(1)
+    }
 
 }
 
@@ -304,32 +279,6 @@ object ResolutionCache {
     val digest = md.digest()
     val sum = new BigInteger(1, digest)
     String.format("%040x", sum)
-  }
-
-  sealed abstract class ResolutionError extends Product with Serializable {
-    def describe: String
-  }
-
-  object ResolutionError {
-    final case class MetadataErrors(errors: Seq[((Module, String), Seq[String])]) extends ResolutionError {
-      def describe: String =
-        // kind of meh
-        s"Errors:\n${errors.map("  " + _).mkString("\n")}"
-    }
-    final case class Conflicts(conflicts: Set[Dependency]) extends ResolutionError {
-      def describe: String =
-        // kind of meh
-        s"Conflicts:\n${conflicts.map("  " + _).mkString("\n")}"
-    }
-    case object DidNotConverge extends ResolutionError {
-      def describe: String =
-        "Did not converge"
-    }
-    final case class DownloadErrors(errors: Seq[(Artifact, FileError)]) extends ResolutionError {
-      def describe: String =
-        // kind of meh
-        s"Error downloading artifacts:\n${errors.map("  " + _).mkString("\n")}"
-    }
   }
 
 }

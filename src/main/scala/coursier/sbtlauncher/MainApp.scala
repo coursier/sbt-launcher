@@ -1,200 +1,169 @@
 package coursier.sbtlauncher
 
 import java.io.File
-import java.nio.charset.StandardCharsets
-import java.nio.file.Files
+import java.nio.file.Paths
 
 import caseapp._
-import com.typesafe.config.ConfigFactory
 import coursier.{Dependency, Module, moduleNameString, organizationString}
 
 import scala.annotation.tailrec
 
 object MainApp extends CaseApp[MainOptions] {
 
-  private val debug = sys.props.contains("coursier.sbt-launcher.debug") || sys.env.contains("COURSIER_SBT_LAUNCHER_DEBUG")
+  private val debug: Boolean =
+    sys.props.contains("coursier.sbt-launcher.debug") ||
+      sys.env.contains("COURSIER_SBT_LAUNCHER_DEBUG")
 
   private def log(msg: String): Unit =
     if (debug)
-      Console.err.println(msg)
+      System.err.println(msg)
 
   private def defaultBase(sbtBinaryVersion: String): String =
     s"${sys.props("user.home")}/.csbt/$sbtBinaryVersion"
 
+  private case class RunParams(
+    scalaVersion: String,
+    sbtVersion: String,
+    sbtBinaryVersion: String,
+    sbtCoursierVersion: String,
+    addCoursier: Boolean,
+    userExtraDeps: Seq[Dependency]
+  ) {
+
+    def isSbt0x: Boolean =
+      sbtVersion.startsWith("0.")
+
+    private def coursierDepOpt: Option[Dependency] =
+      if (addCoursier && sbtVersion.nonEmpty)
+        Some(
+          Dependency(
+            Module(
+              org"io.get-coursier", name"sbt-coursier",
+              attributes = Map(
+                "scalaVersion" -> scalaVersion.split('.').take(2).mkString("."),
+                "sbtVersion" -> sbtBinaryVersion
+              )
+            ),
+            sbtCoursierVersion
+          )
+        )
+      else
+        None
+
+    def extraDeps: Seq[Dependency] =
+      coursierDepOpt.toSeq ++ userExtraDeps
+  }
+
+  @tailrec
+  private def doRun(
+    appId: xsbti.ApplicationID,
+    args: Array[String],
+    params: RunParams
+  ): Unit = {
+
+    val projectDir = new File(s"${sys.props("user.dir")}")
+    // Putting stuff under "project/target" rather than just "target" so that this doesn't get wiped out
+    // when running the clean command from sbt.
+    val targetDir = new File(projectDir, "project/target")
+
+    log("Creating launcher")
+    val launcher = new Launcher(
+      params.scalaVersion,
+      Some(new File(targetDir, "coursier-resolution-cache")),
+      new File(targetDir, "scala-jars"),
+      // FIXME Add org & moduleName in this path
+      new File(targetDir, s"sbt-components/components_scala${params.scalaVersion}${if (params.sbtVersion.isEmpty) "" else "_sbt" + params.sbtVersion}"),
+      new File(targetDir, "ivy2"),
+      log
+    )
+
+    log("Registering scala components")
+    launcher.registerScalaComponents()
+    if (params.isSbt0x) {
+      log("Registering sbt interface components")
+      launcher.registerSbtInterfaceComponents(params.sbtVersion)
+    }
+
+    log("Getting app provider")
+    val appProvider = launcher.app(appId, params.extraDeps: _*)
+
+    log("Creating main")
+    val appMain = appProvider.newMain()
+    val appConfig = AppConfiguration(args, projectDir, appProvider)
+
+    log(s"Running sbt ${params.sbtVersion}")
+    val thread = Thread.currentThread()
+    val previousLoader = thread.getContextClassLoader
+    val result =
+      try {
+        thread.setContextClassLoader(appProvider.loader())
+        appMain.run(appConfig)
+      } finally {
+        thread.setContextClassLoader(previousLoader)
+      }
+    log("Done")
+
+    result match {
+      case _: xsbti.Continue =>
+      case e: xsbti.Exit =>
+        sys.exit(e.code())
+      case r: xsbti.Reboot =>
+        // xsbti.Reboot also has a baseDirectory method, not sure how it is used in the sbt launcher implementation
+        doRun(
+          r.app(),
+          r.arguments(),
+          params.copy(scalaVersion = r.scalaVersion())
+        )
+    }
+  }
+
   def run(options: MainOptions, remainingArgs: RemainingArgs): Unit = {
 
-    val sbtPropFile = new File(sys.props("user.dir") + "/sbt.properties")
-    val buildPropFile = new File(sys.props("user.dir") + "/project/build.properties")
-
-    val propFileOpt = Some(sbtPropFile).filter(_.exists())
-      .orElse(Some(buildPropFile).filter(_.exists()))
-
-    val (org0, name0, ver0, scalaVer0, extraDeps0, mainClass0, sbtVersion0) = {
-
-      val sbtConfigOpt = propFileOpt.map { propFile =>
-        log(s"Parsing $propFile")
-
-        // can't get ConfigFactory.parseFile to work fine here
-        val conf = ConfigFactory.parseString(new String(Files.readAllBytes(propFile.toPath), StandardCharsets.UTF_8))
-          .withFallback(ConfigFactory.defaultReference(Thread.currentThread().getContextClassLoader))
-          .resolve()
-
-        SbtConfig.fromConfig(conf)
-      }
-
-      sbtConfigOpt match {
-        case Some(sbtConfig) =>
-          (
-            options.organization.getOrElse(sbtConfig.organization),
-            options.name.getOrElse(sbtConfig.moduleName),
-            options.version.getOrElse(sbtConfig.version),
-            options.scalaVersion.getOrElse(sbtConfig.scalaVersion),
-            sbtConfig.dependencies,
-            options.mainClass.getOrElse(sbtConfig.mainClass),
-            options.sbtVersion.getOrElse(sbtConfig.version)
-          )
-        case None =>
-          require(options.scalaVersion.nonEmpty, "No scala version specified")
-          // FIXME some other empty values probably aren't fine here
-          (
-            options.organization.getOrElse(""),
-            options.name.getOrElse(""),
-            options.version.getOrElse(""),
-            options.scalaVersion.getOrElse(""),
-            Nil,
-            options.mainClass.getOrElse(""),
-            options.sbtVersion.getOrElse("")
-          )
-      }
-    }
-
-    val sbtBinaryVersion = sbtVersion0.split('.').take(2) match {
-      case Array("0", v) => s"0.$v"
-      case Array(major, _) => s"$major.0"
-    }
+    val config =
+      SbtConfig.fromProject(Paths.get(sys.props("user.dir")))
+        .fold(options.sbtConfig)(options.sbtConfig orElse _)
 
     sys.props("sbt.global.base") = sys.props.getOrElse(
       "csbt.global.base",
-      defaultBase(sbtBinaryVersion)
+      defaultBase(config.sbtBinaryVersion)
     )
 
-    val (extraParseErrors, extraModuleVersions) =
-      coursier.util.Parse.moduleVersions(options.extra, scalaVer0)
-
-    if (extraParseErrors.nonEmpty) {
-      ???
-    }
-
-    val extraDeps = extraModuleVersions.map {
-      case (mod, ver) =>
-        Dependency(mod, ver)
+    val extraDeps = options.extraDependencies(config.scalaVersion) match {
+      case Left(errors) =>
+        errors.foreach(System.err.println)
+        sys.exit(1)
+      case Right(deps) => deps
     }
 
     val sbtCoursierVersion =
-      if (sbtVersion0.startsWith("0.13."))
+      if (config.sbtVersion.startsWith("0.13."))
         "1.1.0-M7" // last sbt 0.13 compatible version
       else
         Properties.sbtCoursierDefaultVersion
 
-    @tailrec
-    def run(
-      appId: xsbti.ApplicationID,
-      args: Array[String],
-      scalaVersion: String
-    ): Unit = {
-
-      val coursierDeps =
-        if (options.addCoursier && sbtVersion0.nonEmpty)
-          Seq(
-            Dependency(
-              Module(
-                org"io.get-coursier",
-                name"sbt-coursier",
-                attributes = Map(
-                  "scalaVersion" -> scalaVersion.split('.').take(2).mkString("."),
-                  "sbtVersion" -> sbtBinaryVersion
-                )
-              ),
-              sbtCoursierVersion
-            )
-          )
-        else
-          Nil
-
-      log("Creating launcher")
-
-      // Putting stuff under "project/target" rather than just "target" so that this doesn't get wiped out
-      // when running the clean command from sbt.
-      val launcher = new Launcher(
-        scalaVersion,
-        Some(new File(s"${sys.props("user.dir")}/project/target/coursier-resolution-cache")),
-        new File(s"${sys.props("user.dir")}/project/target/scala-jars"),
-        // FIXME Add org & moduleName in this path
-        new File(s"${sys.props("user.dir")}/project/target/sbt-components/components_scala$scalaVersion${if (sbtVersion0.isEmpty) "" else "_sbt" + sbtVersion0}"),
-        new File(s"${sys.props("user.dir")}/project/target/ivy2"),
-        log
-      )
-
-      log("Registering scala components")
-
-      launcher.registerScalaComponents()
-
-      if (sbtVersion0.startsWith("0.")) {
-        log("Registering sbt interface components")
-        launcher.registerSbtInterfaceComponents(sbtVersion0)
-      }
-
-      log("Getting app provider")
-
-      val appProvider = launcher.app(appId, extraDeps0 ++ extraDeps ++ coursierDeps: _*)
-
-      log("Creating main")
-
-      val appMain = appProvider.newMain()
-
-      val appConfig = AppConfiguration(
-        args,
-        new File(sys.props("user.dir")),
-        appProvider
-      )
-
-      Console.err.println(s"Running sbt $sbtVersion0")
-
-      val thread = Thread.currentThread()
-      val previousLoader = thread.getContextClassLoader
-
-      val result =
-        try {
-          thread.setContextClassLoader(appProvider.loader())
-          appMain.run(appConfig)
-        } finally {
-          thread.setContextClassLoader(previousLoader)
-        }
-
-      log("Done")
-
-      result match {
-        case _: xsbti.Continue =>
-        case e: xsbti.Exit =>
-          sys.exit(e.code())
-        case r: xsbti.Reboot =>
-          // xsbti.Reboot also has a baseDirectory method, not sure how it is used in the sbt launcher implementation
-          run(r.app(), r.arguments(), r.scalaVersion())
-      }
-    }
-
     val appId = ApplicationID(
-      org0,
-      name0,
-      ver0,
-      mainClass0,
+      config.organization,
+      config.moduleName,
+      config.version,
+      config.mainClass,
       options.mainComponents.toArray,
       crossVersioned = false,
       xsbti.CrossValue.Disabled,
       options.classpathExtra.map(new File(_)).toArray
     )
 
-    run(appId, remainingArgs.all.toArray, scalaVer0)
+    doRun(
+      appId,
+      remainingArgs.all.toArray,
+      RunParams(
+        config.scalaVersion,
+        config.sbtVersion,
+        config.sbtBinaryVersion,
+        sbtCoursierVersion,
+        options.addCoursier,
+        config.dependencies ++ extraDeps
+      )
+    )
   }
 
 }

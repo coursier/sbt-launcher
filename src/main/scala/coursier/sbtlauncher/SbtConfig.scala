@@ -1,6 +1,10 @@
 package coursier.sbtlauncher
 
-import com.typesafe.config.Config
+import java.io.File
+import java.nio.charset.StandardCharsets
+import java.nio.file.{Files, Path}
+
+import com.typesafe.config.{Config, ConfigFactory}
 import coursier.Dependency
 import coursier.util.Parse
 
@@ -10,10 +14,27 @@ final case class SbtConfig(
   organization: String,
   moduleName: String,
   version: String,
+  sbtVersion: String,
   scalaVersion: String,
   mainClass: String,
   dependencies: Seq[Dependency]
-)
+) {
+  def orElse(other: SbtConfig): SbtConfig =
+    SbtConfig(
+      if (organization.isEmpty) other.organization else organization,
+      if (moduleName.isEmpty) other.moduleName else moduleName,
+      if (version.isEmpty) other.version else version,
+      if (sbtVersion.isEmpty) other.sbtVersion else sbtVersion,
+      if (scalaVersion.isEmpty) other.scalaVersion else scalaVersion,
+      if (mainClass.isEmpty) other.mainClass else mainClass,
+      dependencies ++ other.dependencies // odd one out
+    )
+  lazy val sbtBinaryVersion: String =
+    sbtVersion.split('.').take(2) match {
+      case Array("0", v) => s"0.$v"
+      case Array(major, _) => s"$major.0"
+    }
+}
 
 object SbtConfig {
 
@@ -104,9 +125,30 @@ object SbtConfig {
       org,
       name,
       version,
+      version,
       scalaVersion,
       mainClass,
       pluginDependencies ++ dependencies
     )
+  }
+
+  // may throw via typesafe-config…
+  def fromProject(dir: Path): Option[SbtConfig] = {
+
+    val propFileOpt = Seq("sbt.properties", "project/build.properties")
+      .map(dir.resolve)
+      .find(Files.isRegularFile(_))
+
+    propFileOpt.map { propFile =>
+      val b = Files.readAllBytes(propFile)
+      val s = new String(b, StandardCharsets.UTF_8)
+
+      // can't get ConfigFactory.parseFile to work fine here
+      val conf = ConfigFactory.parseString(s)
+        .withFallback(ConfigFactory.defaultReference(Thread.currentThread().getContextClassLoader))
+        .resolve()
+
+      SbtConfig.fromConfig(conf)
+    }
   }
 }
