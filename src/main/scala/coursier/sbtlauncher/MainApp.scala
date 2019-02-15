@@ -4,6 +4,7 @@ import java.io.File
 import java.nio.file.Paths
 
 import caseapp._
+import coursier.sbtlauncher.implem.{AppConfiguration, ApplicationID, Launcher}
 import coursier.{Dependency, Module, moduleNameString, organizationString}
 
 import scala.annotation.tailrec
