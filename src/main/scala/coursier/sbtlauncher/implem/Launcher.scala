@@ -1,4 +1,4 @@
-package coursier.sbtlauncher
+package coursier.sbtlauncher.implem
 
 import java.io.File
 import java.net.{URL, URLClassLoader}
@@ -9,6 +9,7 @@ import coursier._
 import coursier.cache.LocalRepositories
 import coursier.core.Classifier
 import coursier.ivy.IvyRepository
+import coursier.sbtlauncher.{Repository, ResolutionCache}
 
 import scala.language.reflectiveCalls
 

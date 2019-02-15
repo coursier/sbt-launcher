@@ -1,4 +1,4 @@
-package coursier.sbtlauncher
+package coursier.sbtlauncher.implem
 
 import java.io.File
 import java.util.concurrent.{Callable, ConcurrentHashMap}
