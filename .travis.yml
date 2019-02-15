@@ -13,7 +13,7 @@ stages:
     if: (branch = master AND type = push) OR (tag IS present)
 jobs:
   include:
-    - scala: 2.12.7
+    - scala: 2.12.8
     - stage: release
       script: sbt ci-release
 cache:
