@@ -1,7 +1,7 @@
 
 inThisBuild(List(
   organization := "io.get-coursier",
-  homepage := Some(url("https://github.com/coursier/coursier")),
+  homepage := Some(url("https://github.com/coursier/sbt-launcher")),
   licenses := Seq("Apache 2.0" -> url("http://opensource.org/licenses/Apache-2.0")),
   developers := List(
     Developer(
