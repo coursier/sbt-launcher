@@ -11,11 +11,16 @@ stages:
   - name: test
   - name: release
     if: (branch = master AND type = push) OR (tag IS present)
+  - name: upload-launcher
+    if: tag IS present
 jobs:
   include:
     - scala: 2.12.8
     - stage: release
       script: sbt ci-release
+    - stage: upload-launcher
+      env: REPO="coursier/sbt-launcher" NAME="csbt" CMD="./generate-csbt.sh -f --bat=true"
+      script: scripts/upload-launcher/upload-gh-release.sh
 cache:
   directories:
   - "$HOME/.cache"
