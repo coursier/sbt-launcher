@@ -29,10 +29,13 @@ final case class SbtConfig(
       dependencies ++ other.dependencies // odd one out
     )
   lazy val sbtBinaryVersion: String =
-    sbtVersion.split('.').take(2) match {
-      case Array("0", v) => s"0.$v"
-      case Array(major, _) => s"$major.0"
-    }
+    if (sbtVersion.contains("-M") || sbtVersion.contains("-RC"))
+      sbtVersion
+    else
+      sbtVersion.split('.').take(2) match {
+        case Array("0", v) => s"0.$v"
+        case Array(major, _) => s"$major.0"
+      }
 }
 
 object SbtConfig {
