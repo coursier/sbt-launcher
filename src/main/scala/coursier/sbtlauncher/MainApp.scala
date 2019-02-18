@@ -20,7 +20,7 @@ object MainApp extends CaseApp[MainOptions] {
       System.err.println(msg)
 
   private def defaultBase(sbtBinaryVersion: String): String =
-    s"${sys.props("user.home")}/.csbt/$sbtBinaryVersion"
+    s"${sys.props("user.home")}/.sbt/$sbtBinaryVersion"
 
   private case class RunParams(
     scalaVersion: String,
@@ -124,10 +124,8 @@ object MainApp extends CaseApp[MainOptions] {
       SbtConfig.fromProject(Paths.get(sys.props("user.dir")))
         .fold(options.sbtConfig)(options.sbtConfig orElse _)
 
-    sys.props("sbt.global.base") = sys.props.getOrElse(
-      "csbt.global.base",
-      defaultBase(config.sbtBinaryVersion)
-    )
+    if (!sys.props.contains("sbt.global.base"))
+      sys.props("sbt.global.base") = defaultBase(config.sbtBinaryVersion)
 
     val extraDeps = options.extraDependencies(config.scalaVersion) match {
       case Left(errors) =>
