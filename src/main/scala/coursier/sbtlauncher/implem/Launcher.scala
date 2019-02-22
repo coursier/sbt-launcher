@@ -133,7 +133,7 @@ class Launcher(
   def ivyRepositories: Array[xsbti.Repository] =
     appRepositories // ???
 
-  def globalLock = DummyGlobalLock
+  def globalLock = InMemoryGlobalLock
 
   // See https://github.com/sbt/ivy/blob/2cf13e211b2cb31f0d3b317289dca70eca3362f6/src/java/org/apache/ivy/util/ChecksumHelper.java
   val checksums: Array[String] = Array("sha1", "md5")
