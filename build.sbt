@@ -20,7 +20,7 @@ lazy val `sbt-launcher` = project
     scalaVersion := "2.12.7",
     scalacOptions ++= Seq("-feature", "-deprecation"),
     libraryDependencies ++= Seq(
-      "io.get-coursier" %% "coursier" % "1.1.0-M9",
+      "io.get-coursier" %% "coursier" % "1.1.0-M11-2",
       "com.github.alexarchambault" %% "case-app" % "2.0.0-M6",
       "org.scala-sbt" % "launcher-interface" % "1.0.4",
       "com.typesafe" % "config" % "1.3.3",
