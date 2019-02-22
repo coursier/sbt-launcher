@@ -37,9 +37,11 @@ final case class ResolutionCache(
           ""
       val name = s"${dependencies.head.module}:${dependencies.head.version}" + extra
 
+      val classifiers = classifiersOpt.getOrElse(Nil).toSet
       Fetch.fetchEither(
         dependencies,
         repositories,
+        classifiers = classifiers,
         resolutionParams = ResolutionParams()
           .withForceVersion(forceVersion),
         cache = cache,
@@ -258,7 +260,7 @@ final case class ResolutionCache(
         System.err.println(err.getMessage)
         sys.exit(1)
       case Right(Nil) =>
-        System.err.println(s"No JAR found for ${dependency.module}:${dependency.version}")
+        System.err.println(s"No JAR found for ${dependency.module}:${dependency.version}${Option(classifiers).fold("")(_.map(_.value).mkString(" (classifiers ", ", ", ")"))}")
         sys.exit(1)
       case Right(Seq(file)) =>
         file
