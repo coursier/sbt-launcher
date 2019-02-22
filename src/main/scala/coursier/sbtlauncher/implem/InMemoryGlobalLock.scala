@@ -1,9 +1,9 @@
-package coursier.sbtlauncher
+package coursier.sbtlauncher.implem
 
 import java.io.File
 import java.util.concurrent.{Callable, ConcurrentHashMap}
 
-case object DummyGlobalLock extends xsbti.GlobalLock {
+case object InMemoryGlobalLock extends xsbti.GlobalLock {
 
   private val locks = new ConcurrentHashMap[File, AnyRef]
 

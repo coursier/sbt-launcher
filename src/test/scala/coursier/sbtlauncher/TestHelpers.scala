@@ -1,12 +1,11 @@
 package coursier.sbtlauncher
 
 import java.lang.ProcessBuilder.Redirect
-import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path, Paths}
 
 import utest._
 
-object ProjectTests extends TestSuite {
+object TestHelpers {
 
   val launcher = {
     val p = Paths.get("target/test-csbt")
@@ -76,103 +75,5 @@ object ProjectTests extends TestSuite {
       sbtCommands = Seq("update", "updateClassifiers", "test:compile", "testsJVM/test"),
       forceSbtVersion = true
     )
-
-  val tests = Tests {
-
-    "sbt 0.13.17" - {
-      "sourcecode" - {
-        val dir = Paths.get("tests/sourcecode-sbt-0.13.17")
-        run(dir, "0.13.17")
-      }
-    }
-
-    "sbt 1" - {
-      "0.0" - {
-        "case-app" - {
-          runCaseAppTest("1.0.0")
-        }
-      }
-      "0.1" - {
-        "case-app" - {
-          runCaseAppTest("1.0.1")
-        }
-      }
-      "0.2" - {
-        "case-app" - {
-          runCaseAppTest("1.0.2")
-        }
-      }
-      "0.3" - {
-        "case-app" - {
-          runCaseAppTest("1.0.3")
-        }
-      }
-      "0.4" - {
-        "case-app" - {
-          runCaseAppTest("1.0.4")
-        }
-      }
-      "2.0" - {
-        "case-app" - {
-          runCaseAppTest("1.2.0")
-        }
-      }
-      "2.1" - {
-        "case-app" - {
-          runCaseAppTest("1.2.1")
-        }
-      }
-      "2.2" - {
-        "case-app" - {
-          runCaseAppTest("1.2.2")
-        }
-      }
-      "2.3" - {
-        "case-app" - {
-          runCaseAppTest("1.2.3")
-        }
-        "sourcecode" - {
-          val dir = Paths.get("tests/sourcecode-sbt-1.2.3")
-          run(
-            dir,
-            "1.2.3",
-            sbtCommands = Seq("+update", "+updateClassifiers", "+test:compile", "test")
-          )
-        }
-      }
-      "2.4" - {
-        "case-app" - {
-          runCaseAppTest("1.2.4")
-        }
-      }
-      "2.5" - {
-        "case-app" - {
-          runCaseAppTest("1.2.5")
-        }
-      }
-      "2.6" - {
-        "case-app" - {
-          runCaseAppTest("1.2.6")
-        }
-      }
-      "2.7" - {
-        "case-app" - {
-          runCaseAppTest("1.2.7")
-        }
-      }
-    }
-
-    "reload" - {
-      * - {
-        val dir = Paths.get("tests/sourcecode-sbt-1.2.3")
-        run(
-          dir,
-          "1.2.3",
-          sbtCommands = Seq("test:compile", "reload", "test")
-        )
-      }
-    }
-
-  }
 
 }

@@ -1,4 +1,4 @@
-package coursier.sbtlauncher
+package coursier.sbtlauncher.implem
 
 import java.io.File
 import java.nio.file.{Files, StandardCopyOption}
