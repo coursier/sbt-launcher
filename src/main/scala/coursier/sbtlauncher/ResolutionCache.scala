@@ -219,7 +219,8 @@ final case class ResolutionCache(
           .right
           .map { l =>
             // optional set to false, as the artifacts we're handed here were all found
-            writeToCache(repr, l.map(_._1.copy(optional = false)))
+            if (l.nonEmpty)
+              writeToCache(repr, l.map(_._1.copy(optional = false)))
             l.map(_._2)
           }
     }
