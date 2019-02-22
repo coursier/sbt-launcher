@@ -310,7 +310,7 @@ object Launcher {
         val dest = new File(scalaJarCache, s"${scalaOrg.value}/$scalaVersion/$destName")
         if (!dest.exists()) {
           // FIXME Two processes doing that at the same time would clash
-          Files.createDirectories(jar.toPath.getParent)
+          Files.createDirectories(dest.toPath.getParent)
           Files.copy(
             jar.toPath,
             dest.toPath,
