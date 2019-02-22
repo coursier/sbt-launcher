@@ -87,7 +87,7 @@ object MainApp extends CaseApp[MainOptions] {
         None
 
     def extraDeps: Seq[Dependency] =
-      coursierDepOpt.toSeq ++ userExtraDeps
+      userExtraDeps ++ coursierDepOpt.toSeq
   }
 
   @tailrec
