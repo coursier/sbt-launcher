@@ -1,7 +1,6 @@
 package coursier.sbtlauncher
 
 import java.lang.ProcessBuilder.Redirect
-import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path, Paths}
 
 import utest._
