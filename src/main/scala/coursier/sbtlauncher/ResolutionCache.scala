@@ -7,7 +7,7 @@ import java.nio.file.{Files, Path}
 import java.security.MessageDigest
 
 import coursier.cache.{FileCache, ProgressBarLogger}
-import coursier.core.{Artifact, Classifier, Organization}
+import coursier.core.{Artifact, Classifier, Organization, Type}
 import coursier.params.ResolutionParams
 import coursier.{Dependency, Fetch, Module, moduleNameString}
 
@@ -38,10 +38,22 @@ final case class ResolutionCache(
       val name = s"${dependencies.head.module}:${dependencies.head.version}" + extra
 
       val classifiers = classifiersOpt.getOrElse(Nil).toSet
+      // TODO Remove artifactTypes once https://github.com/coursier/coursier/pull/1074 can be used from here
+      val artifactTypes =
+        if (classifiers.isEmpty)
+          coursier.core.Resolution.defaultTypes
+        else {
+          classifiers.flatMap {
+            case Classifier.sources => Set(Type.source)
+            case Classifier.javadoc => Set(Type.doc)
+            case _ => Set.empty[Type]
+          }
+        }
       Fetch.fetchEither(
         dependencies,
         repositories,
         classifiers = classifiers,
+        artifactTypes = artifactTypes,
         resolutionParams = ResolutionParams()
           .withForceVersion(forceVersion),
         cache = cache,
