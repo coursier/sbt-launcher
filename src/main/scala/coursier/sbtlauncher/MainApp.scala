@@ -1,7 +1,8 @@
 package coursier.sbtlauncher
 
-import java.io.File
-import java.nio.file.Paths
+import java.io.{File, FileFilter}
+import java.nio.file.{Files, Paths}
+import java.util.regex.Pattern
 
 import caseapp._
 import coursier.sbtlauncher.implem.{AppConfiguration, ApplicationID, Launcher}
@@ -21,6 +22,40 @@ object MainApp extends CaseApp[MainOptions] {
 
   private def defaultBase(sbtBinaryVersion: String): String =
     s"${sys.props("user.home")}/.sbt/$sbtBinaryVersion"
+
+  private def sbtCoursierVersionFromPluginsSbt(dir: File): Option[String] = {
+
+    val pattern = (
+      Pattern.quote("\"io.get-coursier\"") + "\\s+" +
+        Pattern.quote("%") + "\\s+" +
+        Pattern.quote("\"sbt-coursier\"") + "\\s+" +
+        Pattern.quote("%") + "\\s+" +
+        Pattern.quote("\"") + "([^\"]+)" + Pattern.quote("\"")
+    ).r
+
+    def recurse(dir: File): Option[String] =
+      if (dir.isDirectory) {
+        val sbtFiles = dir.listFiles(
+          new FileFilter {
+            def accept(pathname: File) =
+              pathname.getName.endsWith(".sbt") && pathname.isFile
+          }
+        )
+
+        val it = sbtFiles.iterator
+          .flatMap(f => scala.io.Source.fromFile(f).getLines())
+          .filter(_.contains("\"io.get-coursier\""))
+          .flatMap(s => pattern.findFirstMatchIn(s).map(_.group(1)))
+
+        if (it.hasNext)
+          Some(it.next())
+        else
+          recurse(new File(dir, "project"))
+      } else
+        None
+
+    recurse(dir)
+  }
 
   private case class RunParams(
     scalaVersion: String,
@@ -134,11 +169,12 @@ object MainApp extends CaseApp[MainOptions] {
       case Right(deps) => deps
     }
 
-    val sbtCoursierVersion =
+    val sbtCoursierVersion = sbtCoursierVersionFromPluginsSbt(new File(sys.props("user.dir") + "/project")).getOrElse {
       if (config.sbtVersion.startsWith("0.13."))
         "1.1.0-M7" // last sbt 0.13 compatible version
       else
         Properties.sbtCoursierDefaultVersion
+    }
 
     val appId = ApplicationID(
       config.organization,
