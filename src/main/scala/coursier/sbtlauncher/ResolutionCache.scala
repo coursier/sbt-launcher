@@ -6,7 +6,8 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path}
 import java.security.MessageDigest
 
-import coursier.cache.{FileCache, ProgressBarLogger}
+import coursier.cache.FileCache
+import coursier.cache.loggers.{FileTypeRefreshDisplay, RefreshLogger}
 import coursier.core.{Artifact, Classifier, Organization, Type}
 import coursier.params.ResolutionParams
 import coursier.{Dependency, Fetch, Module, moduleNameString}
@@ -19,7 +20,10 @@ final case class ResolutionCache(
 
   import ResolutionCache._
 
-  private val cache = FileCache.create().copy(logger = ProgressBarLogger.create())
+  private val cache = FileCache()
+    .withLogger(
+      RefreshLogger.create(FileTypeRefreshDisplay.create())
+    )
 
   private def actualArtifacts(
     dependencies: Seq[Dependency],
@@ -54,18 +58,18 @@ final case class ResolutionCache(
             case _ => Set.empty[Type]
           }
         }
-      Fetch.fetchEither(
-        dependencies,
-        repositories,
-        classifiers = classifiers,
-        artifactTypes = artifactTypes,
-        resolutionParams = ResolutionParams()
-          .withForceVersion(forceVersion),
-        cache = cache,
-        beforeResolutionLogging = () => {
-          System.err.println(s"Getting $name0")
-        }
-      ).map(_._2)
+      Fetch()
+        .addDependencies(dependencies: _*)
+        .addRepositories(repositories: _*)
+        .withClassifiers(classifiers)
+        .withArtifactTypes(artifactTypes)
+        .withResolutionParams(
+          ResolutionParams()
+            .withForceVersion(forceVersion)
+        )
+        .withCache(cache)
+        .either()
+        .map(_._2)
     }
 
 
