@@ -1,7 +1,7 @@
 package coursier.sbtlauncher
 
 import java.io.{File, FileFilter}
-import java.nio.file.{Files, Paths}
+import java.nio.file.Paths
 import java.util.regex.Pattern
 
 import caseapp._
