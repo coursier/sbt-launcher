@@ -61,8 +61,7 @@ object MainApp extends CaseApp[MainOptions] {
     scalaVersion: String,
     sbtVersion: String,
     sbtBinaryVersion: String,
-    sbtCoursierVersion: String,
-    addCoursier: Boolean,
+    sbtCoursierVersionOpt: Option[String],
     userExtraDeps: Seq[Dependency]
   ) {
 
@@ -70,21 +69,23 @@ object MainApp extends CaseApp[MainOptions] {
       sbtVersion.startsWith("0.")
 
     private def coursierDepOpt: Option[Dependency] =
-      if (addCoursier && sbtVersion.nonEmpty)
-        Some(
-          Dependency(
-            Module(
-              org"io.get-coursier", name"sbt-coursier",
-              attributes = Map(
-                "scalaVersion" -> scalaVersion.split('.').take(2).mkString("."),
-                "sbtVersion" -> sbtBinaryVersion
-              )
-            ),
-            sbtCoursierVersion
+      sbtCoursierVersionOpt.flatMap { sbtCoursierVersion =>
+        if (sbtVersion.nonEmpty)
+          Some(
+            Dependency(
+              Module(
+                org"io.get-coursier", name"sbt-coursier",
+                attributes = Map(
+                  "scalaVersion" -> scalaVersion.split('.').take(2).mkString("."),
+                  "sbtVersion" -> sbtBinaryVersion
+                )
+              ),
+              sbtCoursierVersion
+            )
           )
-        )
-      else
-        None
+        else
+          None
+      }
 
     def extraDeps: Seq[Dependency] =
       userExtraDeps ++ coursierDepOpt.toSeq
@@ -169,11 +170,24 @@ object MainApp extends CaseApp[MainOptions] {
       case Right(deps) => deps
     }
 
-    val sbtCoursierVersion = sbtCoursierVersionFromPluginsSbt(new File(sys.props("user.dir") + "/project")).getOrElse {
-      if (config.sbtVersion.startsWith("0.13."))
-        "1.1.0-M7" // last sbt 0.13 compatible version
-      else
-        Properties.sbtCoursierDefaultVersion
+    val sbtCoursierVersionOpt = sbtCoursierVersionFromPluginsSbt(new File(sys.props("user.dir") + "/project")) match {
+      case None =>
+        Some {
+          if (config.sbtVersion.startsWith("0.13."))
+            "1.1.0-M7" // last sbt 0.13 compatible version
+          else
+            Properties.sbtCoursierDefaultVersion
+        }
+      case Some(v) =>
+        val before110M12 = coursier.core.Version(v).compare(coursier.core.Version("1.1.0-M12")) < 0
+        if (before110M12) {
+          if (options.addCoursier) {
+            System.err.println("Found sbt-coursier version < 1.1.0-M12, which may not work with the coursier-based sbt launcher")
+            Some(v)
+          } else
+            None
+        } else
+          Some(v)
     }
 
     val appId = ApplicationID(
@@ -194,8 +208,7 @@ object MainApp extends CaseApp[MainOptions] {
         config.scalaVersion,
         config.sbtVersion,
         config.sbtBinaryVersion,
-        sbtCoursierVersion,
-        options.addCoursier,
+        if (options.addCoursier) sbtCoursierVersionOpt else None,
         config.dependencies ++ extraDeps
       )
     )
