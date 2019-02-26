@@ -24,18 +24,23 @@ final case class ResolutionCache(
   private def actualArtifacts(
     dependencies: Seq[Dependency],
     forceVersion: Map[Module, String],
-    classifiersOpt: Option[Seq[Classifier]]
+    classifiersOpt: Option[Seq[Classifier]],
+    name: String
   ): Either[Exception, Seq[(Artifact, File)]] =
     if (dependencies.isEmpty)
       Right(Nil)
     else {
 
-      val extra =
-        if (dependencies.lengthCompare(1) > 0)
-          s" and ${dependencies.length - 1} other dependencies"
-        else
-          ""
-      val name = s"${dependencies.head.module}:${dependencies.head.version}" + extra
+      val name0 =
+        if (name.isEmpty) {
+          val extra =
+            if (dependencies.lengthCompare(1) > 0)
+              s" and ${dependencies.length - 1} other dependencies"
+            else
+              ""
+          s"${dependencies.head.module}:${dependencies.head.version}" + extra
+        } else
+          name
 
       val classifiers = classifiersOpt.getOrElse(Nil).toSet
       // TODO Remove artifactTypes once https://github.com/coursier/coursier/pull/1074 can be used from here
@@ -58,16 +63,7 @@ final case class ResolutionCache(
           .withForceVersion(forceVersion),
         cache = cache,
         beforeResolutionLogging = () => {
-          System.err.println(s"Resolving $name")
-        },
-        afterResolutionLogging = _ => {
-          System.err.println(s"Resolved $name")
-        },
-        beforeFetchLogging = () => {
-          System.err.println(s"Fetching $name artifacts")
-        },
-        afterFetchLogging = _ => {
-          System.err.println(s"Fetched $name artifacts")
+          System.err.println(s"Getting $name0")
         }
       ).map(_._2)
     }
@@ -186,7 +182,8 @@ final case class ResolutionCache(
     dependencies: Seq[Dependency],
     forceVersion: Map[Module, String] = Map(),
     classifiers: Seq[Classifier] = null,
-    forceScala: (Organization, String) = null
+    forceScala: (Organization, String) = null,
+    name: String = ""
   ): Either[Exception, Seq[File]] = {
 
     val dependenciesRepr =
@@ -227,7 +224,12 @@ final case class ResolutionCache(
       case Some(files) =>
         Right(files)
       case None =>
-        actualArtifacts(dependencies, forceVersion0, Option(classifiers))
+        actualArtifacts(
+          dependencies,
+          forceVersion0,
+          Option(classifiers),
+          name
+        )
           .right
           .map { l =>
             // optional set to false, as the artifacts we're handed here were all found
@@ -242,13 +244,15 @@ final case class ResolutionCache(
     dependencies: Seq[Dependency],
     forceVersion: Map[Module, String] = Map(),
     classifiers: Seq[Classifier] = null,
-    forceScala: (Organization, String) = null
+    forceScala: (Organization, String) = null,
+    name: String = ""
   ): Seq[File] =
     artifacts(
       dependencies,
       forceVersion,
       classifiers,
-      forceScala
+      forceScala,
+      name
     ) match {
       case Left(err) =>
         System.err.println(err.getMessage)
@@ -261,13 +265,15 @@ final case class ResolutionCache(
     dependency: Dependency,
     forceVersion: Map[Module, String] = Map(),
     classifiers: Seq[Classifier] = null,
-    forceScala: (Organization, String) = null
+    forceScala: (Organization, String) = null,
+    name: String = ""
   ): File =
     artifacts(
       Seq(dependency.copy(transitive = false)),
       forceVersion,
       classifiers,
-      forceScala
+      forceScala,
+      name
     ) match {
       case Left(err) =>
         System.err.println(err.getMessage)
