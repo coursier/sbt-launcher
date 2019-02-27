@@ -2,6 +2,7 @@ package coursier.sbtlauncher
 
 import java.io.File
 import java.lang.ProcessBuilder.Redirect
+import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path, Paths}
 
 import utest._
@@ -41,7 +42,8 @@ object TestHelpers {
     dir: Path,
     sbtVersion: String,
     sbtCommands: Seq[String] = Seq("update", "updateClassifiers", "test:compile", "test"),
-    forceSbtVersion: Boolean = false
+    forceSbtVersion: Boolean = false,
+    globalPlugins: Seq[String] = Nil
   ): Unit = {
 
     val propFile = dir.resolve("project/build.properties")
@@ -72,6 +74,19 @@ object TestHelpers {
 
     Files.createDirectories(sbtDir)
     Files.createDirectories(ivyHome)
+
+    if (globalPlugins.nonEmpty) {
+      val pluginsSbt = sbtDir.resolve("plugins/plugins.sbt")
+      Files.createDirectories(pluginsSbt.getParent)
+      Files.write(
+        pluginsSbt,
+        globalPlugins
+          .map(p => s"addSbtPlugin($p)\n")
+          .mkString
+          .getBytes(StandardCharsets.UTF_8)
+      )
+    }
+
     val cmd = Seq(
       launcher.toAbsolutePath.toString,
       "-J-Dsbt.global.base=" + sbtDir.toAbsolutePath,
@@ -96,12 +111,16 @@ object TestHelpers {
     }
   }
 
-  def runCaseAppTest(sbtVersion: String): Unit =
+  def runCaseAppTest(
+    sbtVersion: String,
+    globalPlugins: Seq[String] = Nil
+  ): Unit =
     run(
-      Paths.get(s"tests/case-app-sbt-$sbtVersion"),
+      Paths.get(s"tests/case-app-sbt-$sbtVersion" + (if (globalPlugins.isEmpty) "" else "-global-plugins")),
       sbtVersion,
       sbtCommands = Seq("update", "updateClassifiers", "test:compile", "testsJVM/test"),
-      forceSbtVersion = true
+      forceSbtVersion = true,
+      globalPlugins = globalPlugins
     )
 
 }
