@@ -23,7 +23,7 @@ object MainApp extends CaseApp[MainOptions] {
   private def defaultBase(sbtBinaryVersion: String): String =
     s"${sys.props("user.home")}/.sbt/$sbtBinaryVersion"
 
-  private def sbtCoursierVersionFromPluginsSbt(dir: File): Option[String] = {
+  private def sbtCoursierVersionFromPluginsSbt(dir: File): Option[(String, File)] = {
 
     val pattern = (
       Pattern.quote("\"io.get-coursier\"") + "\\s+" +
@@ -33,7 +33,7 @@ object MainApp extends CaseApp[MainOptions] {
         Pattern.quote("\"") + "([^\"]+)" + Pattern.quote("\"")
     ).r
 
-    def recurse(dir: File): Option[String] =
+    def recurse(dir: File): Option[(String, File)] =
       if (dir.isDirectory) {
         val sbtFiles = dir.listFiles(
           new FileFilter {
@@ -43,9 +43,10 @@ object MainApp extends CaseApp[MainOptions] {
         )
 
         val it = sbtFiles.iterator
-          .flatMap(f => scala.io.Source.fromFile(f).getLines())
-          .filter(_.contains("\"io.get-coursier\""))
-          .flatMap(s => pattern.findFirstMatchIn(s).map(_.group(1)))
+          .flatMap(f => scala.io.Source.fromFile(f).getLines().map(_.trim -> f))
+          .filter(!_._1.startsWith("/"))
+          .filter(_._1.contains("\"io.get-coursier\""))
+          .flatMap(s => pattern.findFirstMatchIn(s._1).map(_.group(1) -> s._2))
 
         if (it.hasNext)
           Some(it.next())
@@ -178,11 +179,11 @@ object MainApp extends CaseApp[MainOptions] {
           else
             Properties.sbtCoursierDefaultVersion
         }
-      case Some(v) =>
+      case Some((v, f)) =>
         val before110M12 = coursier.core.Version(v).compare(coursier.core.Version("1.1.0-M12")) < 0
         if (before110M12) {
           if (options.addCoursier) {
-            System.err.println("Found sbt-coursier version < 1.1.0-M12, which may not work with the coursier-based sbt launcher")
+            System.err.println(s"Found sbt-coursier version $v < 1.1.0-M12 in $f, which may not work with the coursier-based sbt launcher")
             Some(v)
           } else
             None
