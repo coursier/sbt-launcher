@@ -1,9 +1,12 @@
 package coursier.sbtlauncher
 
+import java.io.File
 import java.lang.ProcessBuilder.Redirect
 import java.nio.file.{Files, Path, Paths}
 
 import utest._
+
+import scala.collection.JavaConverters._
 
 object TestHelpers {
 
@@ -23,6 +26,15 @@ object TestHelpers {
     assert(retCode == 0)
     Console.err.println(s"Generated launcher $p")
     p
+  }
+
+  private def deleteRecursively(p: Path): Unit = {
+    if (Files.isDirectory(p))
+      Files.list(p)
+        .iterator()
+        .asScala
+        .foreach(deleteRecursively)
+    Files.deleteIfExists(p)
   }
 
   def run(
@@ -53,19 +65,35 @@ object TestHelpers {
       assert(actualSbtVersion == sbtVersion)
     }
 
-    val cmd = Seq(launcher.toAbsolutePath.toString) ++ extraArgs ++ sbtCommands
+    val sbtDir = dir.resolve("sbt-global-base")
+    val ivyHome = dir.resolve("ivy-home")
+    deleteRecursively(sbtDir)
+    deleteRecursively(ivyHome)
+
+    Files.createDirectories(sbtDir)
+    Files.createDirectories(ivyHome)
+    val cmd = Seq(
+      launcher.toAbsolutePath.toString,
+      "-J-Dsbt.global.base=" + sbtDir.toAbsolutePath,
+      "-J-Dsbt.ivy.home=" + ivyHome.toAbsolutePath
+    ) ++ extraArgs ++ sbtCommands
     Console.err.println("Running")
     Console.err.println(s"  ${cmd.mkString(" ")}")
     Console.err.println(s"in directory $dir")
-    val p = new ProcessBuilder(cmd: _*)
+    val b = new ProcessBuilder(cmd: _*)
       .directory(dir.toFile)
       .redirectOutput(Redirect.INHERIT)
       .redirectError(Redirect.INHERIT)
       .redirectInput(Redirect.PIPE)
-      .start()
-    p.getOutputStream.close()
-    val retCode = p.waitFor()
-    assert(retCode == 0)
+    try {
+      val p = b.start()
+      p.getOutputStream.close()
+      val retCode = p.waitFor()
+      assert(retCode == 0)
+    } finally {
+      deleteRecursively(sbtDir)
+      deleteRecursively(ivyHome)
+    }
   }
 
   def runCaseAppTest(sbtVersion: String): Unit =
