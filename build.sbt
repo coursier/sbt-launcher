@@ -14,7 +14,6 @@ inThisBuild(List(
 ))
 
 lazy val `sbt-launcher` = project
-  .in(file("."))
   .enablePlugins(PackPlugin)
   .settings(
     scalaVersion := "2.12.8",
@@ -52,3 +51,7 @@ lazy val `sbt-launcher` = project
       Seq(f)
     }
   )
+
+lazy val `coursier-sbt-launcher` = project
+  .in(file("."))
+  .aggregate(`sbt-launcher`)
