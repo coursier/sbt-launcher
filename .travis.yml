@@ -3,10 +3,9 @@ jdk: oraclejdk8
 scala: 2.12.8
 before_install:
   - git fetch --tags
+  - curl https://raw.githubusercontent.com/scala-native/scala-native/master/scripts/travis_setup.sh | bash -x
 dist: trusty
 sudo: required
-before_install:
-- curl https://raw.githubusercontent.com/scala-native/scala-native/master/scripts/travis_setup.sh | bash -x
 stages:
   - name: test
   - name: release
