@@ -88,18 +88,23 @@ class Launcher(
 
   private def getScala0(version: String, reason: String, scalaOrg: Organization): xsbti.ScalaProvider = {
 
-    val files = getScalaFiles(version, reason, scalaOrg).map(noVersionScalaJar(scalaJarCache, scalaOrg, version, _))
+    val files = getScalaFiles(version, scalaOrg)
+      .map(noVersionScalaJar(scalaJarCache, scalaOrg, version, _))
 
     getScalaProvider(files, version)
   }
 
-  private def getScalaFiles(version: String, reason: String, scalaOrg: Organization): Seq[File] =
+  private def getScalaFiles(version: String, scalaOrg: Organization): Seq[File] =
     resolutionCache.artifactsOrExit(
       Seq(
         Dependency(Module(scalaOrg, name"scala-library"), version),
         Dependency(Module(scalaOrg, name"scala-compiler"), version)
       ),
-      forceScala = scalaOrg -> version
+      forceScala = scalaOrg -> version,
+      name = s"scala-compiler $version" + {
+        if (scalaOrg.value == "org.scala-lang") ""
+        else s" for organization ${scalaOrg.value}"
+      }
     )
 
   lazy val topLoader: ClassLoader =
@@ -178,16 +183,16 @@ class Launcher(
         Dependency(Module(scalaOrg, name"scala-library"), scalaVersion),
         Dependency(Module(scalaOrg, name"scala-compiler"), scalaVersion)
       ),
-      forceScala = scalaOrg -> scalaVersion
+      forceScala = scalaOrg -> scalaVersion,
+      name = {
+        if (id0.groupID == "org.scala-sbt" && id0.name == "sbt")
+          s"sbt ${id0.version}"
+        else
+          s"${id0.groupID}:${id0.name}:${id0.version}"
+      }
     )
 
-    val scalaFiles = resolutionCache.artifactsOrExit(
-      Seq(
-        Dependency(Module(scalaOrg, name"scala-library"), scalaVersion),
-        Dependency(Module(scalaOrg, name"scala-compiler"), scalaVersion)
-      ),
-      forceScala = scalaOrg -> scalaVersion
-    )
+    val scalaFiles = getScalaFiles(scalaVersion, scalaOrg)
 
     (scalaFiles, files)
   }
@@ -220,7 +225,7 @@ class Launcher(
     lazy val compilerInterfaceSourceJar = sbtCompilerInterfaceSrcComponentFile(sbtVersion)
 
     if (componentProvider.component("xsbti").isEmpty) {
-      val (interfaceJar, _) = sbtInterfaceComponentFiles(sbtVersion)
+      val interfaceJar = sbtInterfaceComponentFile(sbtVersion)
       componentProvider.defineComponentNoCopy("xsbti", Array(interfaceJar))
     }
     if (componentProvider.component("compiler-interface").isEmpty)
@@ -229,7 +234,7 @@ class Launcher(
       componentProvider.defineComponentNoCopy("compiler-interface-src", Array(compilerInterfaceSourceJar))
   }
 
-  private def sbtInterfaceComponentFiles(sbtVersion: String): (File, File) = {
+  private def sbtInterfaceComponentFile(sbtVersion: String): File = {
 
     val selectedSbtVersion = sbtVersion match {
       case "1.2.1" => "1.2.0" // not sure why this is required…
@@ -238,10 +243,10 @@ class Launcher(
 
     val dep = Dependency(mod"org.scala-sbt:interface", selectedSbtVersion)
 
-    val interfaceJar = resolutionCache.artifactOrExit(dep)
-    val compilerInterfaceSourcesJar = resolutionCache.artifactOrExit(dep, classifiers = Seq(Classifier.sources))
-
-    (interfaceJar, compilerInterfaceSourcesJar)
+    resolutionCache.artifactOrExit(
+      dep,
+      name = s"sbt interface $selectedSbtVersion"
+    )
   }
 
   private def sbtCompilerInterfaceSrcComponentFile(sbtVersion: String): File = {
@@ -249,8 +254,8 @@ class Launcher(
     val deps = Seq(Dependency(mod"org.scala-sbt:compiler-interface", sbtVersion, transitive = false))
 
     val files =
-      resolutionCache.artifactsOrExit(deps) ++
-        resolutionCache.artifactsOrExit(deps, classifiers = Seq(Classifier.sources))
+      resolutionCache.artifactsOrExit(deps, name = s"compiler interface $sbtVersion") ++
+        resolutionCache.artifactsOrExit(deps, classifiers = Seq(Classifier.sources), name = s"compiler interface $sbtVersion sources")
 
     files
       .find(f =>

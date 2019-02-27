@@ -46,3 +46,6 @@
 [submodule "scripts/upload-launcher"]
 	path = scripts/upload-launcher
 	url = https://github.com/coursier/upload-launcher-scripts.git
+[submodule "tests/case-app-sbt-1.2.6-global-plugins"]
+	path = tests/case-app-sbt-1.2.7-global-plugins
+	url = https://github.com/alexarchambault/case-app.git

@@ -28,6 +28,16 @@ object Sbt12Tests extends TestSuite {
         "case-app" - {
           runCaseAppTest("1.2.7")
         }
+
+        "case-app global plugins" - {
+          runCaseAppTest(
+            "1.2.7",
+            globalPlugins = Seq(
+              """"ch.epfl.scala" % "sbt-bloop" % "1.2.5"""",
+              """"org.scalameta" % "sbt-metals" % "0.4.4""""
+            )
+          )
+        }
       }
     }
 

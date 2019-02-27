@@ -13,14 +13,31 @@ inThisBuild(List(
   )
 ))
 
+def scala212 = "2.12.8"
+def scala210 = "2.10.7"
+
+lazy val `sbt-launcher-plugin` = project
+  .settings(
+    sbtPlugin := true,
+    scalaVersion := scala212,
+    crossScalaVersions := Seq(scala212, scala210),
+    sbtVersion.in(pluginCrossBuild) := {
+      scalaBinaryVersion.value match {
+        case "2.10" => "0.13.8"
+        case "2.12" => "1.0.1"
+        case _ => sbtVersion.in(pluginCrossBuild).value
+      }
+    }
+  )
+
 lazy val `sbt-launcher` = project
-  .in(file("."))
   .enablePlugins(PackPlugin)
   .settings(
-    scalaVersion := "2.12.8",
+    scalaVersion := scala212,
+    crossScalaVersions := Seq(scala212),
     scalacOptions ++= Seq("-feature", "-deprecation"),
     libraryDependencies ++= Seq(
-      "io.get-coursier" %% "coursier" % "1.1.0-M11-2",
+      "io.get-coursier" %% "coursier" % "1.1.0-M12",
       "com.github.alexarchambault" %% "case-app" % "2.0.0-M6",
       "org.scala-sbt" % "launcher-interface" % "1.0.4",
       "com.typesafe" % "config" % "1.3.3",
@@ -41,7 +58,7 @@ lazy val `sbt-launcher` = project
 
       p.setProperty("version", ver)
       p.setProperty("commit-hash", Seq("git", "rev-parse", "HEAD").!!.trim)
-      p.setProperty("sbt-coursier-default-version", coursierVersion) // FIXME Should be sbtCoursierVersion
+      p.setProperty("sbt-coursier-default-version", sbtCoursierVersion)
 
       val w = new java.io.FileOutputStream(f)
       p.store(w, "coursier sbt-launcher properties")
@@ -51,4 +68,11 @@ lazy val `sbt-launcher` = project
 
       Seq(f)
     }
+  )
+
+lazy val `coursier-sbt-launcher` = project
+  .in(file("."))
+  .aggregate(
+    `sbt-launcher`,
+    `sbt-launcher-plugin`
   )

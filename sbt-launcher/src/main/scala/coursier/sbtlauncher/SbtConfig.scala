@@ -53,9 +53,12 @@ object SbtConfig {
         config.getString("scala.version")
       else if (version.startsWith("0.13."))
         "2.10.7"
-      else if (version.startsWith("1."))
-        "2.12.7"
-      else
+      else if (version.startsWith("1.")) {
+        // might be better to adjust that depending on which version the sbt version depends on…
+        val v = scala.util.Properties.versionNumberString
+        assert(v.startsWith("2.12."))
+        v
+      } else
         throw new Exception(s"Don't know what Scala version should be used for sbt version '$version'")
 
     val org =

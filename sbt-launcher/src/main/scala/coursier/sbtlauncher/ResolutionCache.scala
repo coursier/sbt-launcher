@@ -6,7 +6,8 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path}
 import java.security.MessageDigest
 
-import coursier.cache.{FileCache, ProgressBarLogger}
+import coursier.cache.FileCache
+import coursier.cache.loggers.{FileTypeRefreshDisplay, RefreshLogger}
 import coursier.core.{Artifact, Classifier, Organization, Type}
 import coursier.params.ResolutionParams
 import coursier.{Dependency, Fetch, Module, moduleNameString}
@@ -19,23 +20,31 @@ final case class ResolutionCache(
 
   import ResolutionCache._
 
-  private val cache = FileCache.create().copy(logger = ProgressBarLogger.create())
+  private val cache = FileCache()
+    .withLogger(
+      RefreshLogger.create(FileTypeRefreshDisplay.create())
+    )
 
   private def actualArtifacts(
     dependencies: Seq[Dependency],
     forceVersion: Map[Module, String],
-    classifiersOpt: Option[Seq[Classifier]]
+    classifiersOpt: Option[Seq[Classifier]],
+    name: String
   ): Either[Exception, Seq[(Artifact, File)]] =
     if (dependencies.isEmpty)
       Right(Nil)
     else {
 
-      val extra =
-        if (dependencies.lengthCompare(1) > 0)
-          s" and ${dependencies.length - 1} other dependencies"
-        else
-          ""
-      val name = s"${dependencies.head.module}:${dependencies.head.version}" + extra
+      val name0 =
+        if (name.isEmpty) {
+          val extra =
+            if (dependencies.lengthCompare(1) > 0)
+              s" and ${dependencies.length - 1} other dependencies"
+            else
+              ""
+          s"${dependencies.head.module}:${dependencies.head.version}" + extra
+        } else
+          name
 
       val classifiers = classifiersOpt.getOrElse(Nil).toSet
       // TODO Remove artifactTypes once https://github.com/coursier/coursier/pull/1074 can be used from here
@@ -49,27 +58,18 @@ final case class ResolutionCache(
             case _ => Set.empty[Type]
           }
         }
-      Fetch.fetchEither(
-        dependencies,
-        repositories,
-        classifiers = classifiers,
-        artifactTypes = artifactTypes,
-        resolutionParams = ResolutionParams()
-          .withForceVersion(forceVersion),
-        cache = cache,
-        beforeResolutionLogging = () => {
-          System.err.println(s"Resolving $name")
-        },
-        afterResolutionLogging = _ => {
-          System.err.println(s"Resolved $name")
-        },
-        beforeFetchLogging = () => {
-          System.err.println(s"Fetching $name artifacts")
-        },
-        afterFetchLogging = _ => {
-          System.err.println(s"Fetched $name artifacts")
-        }
-      ).map(_._2)
+      Fetch()
+        .addDependencies(dependencies: _*)
+        .addRepositories(repositories: _*)
+        .withClassifiers(classifiers)
+        .withArtifactTypes(artifactTypes)
+        .withResolutionParams(
+          ResolutionParams()
+            .withForceVersion(forceVersion)
+        )
+        .withCache(cache)
+        .either()
+        .map(_._2)
     }
 
 
@@ -186,7 +186,8 @@ final case class ResolutionCache(
     dependencies: Seq[Dependency],
     forceVersion: Map[Module, String] = Map(),
     classifiers: Seq[Classifier] = null,
-    forceScala: (Organization, String) = null
+    forceScala: (Organization, String) = null,
+    name: String = ""
   ): Either[Exception, Seq[File]] = {
 
     val dependenciesRepr =
@@ -227,7 +228,12 @@ final case class ResolutionCache(
       case Some(files) =>
         Right(files)
       case None =>
-        actualArtifacts(dependencies, forceVersion0, Option(classifiers))
+        actualArtifacts(
+          dependencies,
+          forceVersion0,
+          Option(classifiers),
+          name
+        )
           .right
           .map { l =>
             // optional set to false, as the artifacts we're handed here were all found
@@ -242,13 +248,15 @@ final case class ResolutionCache(
     dependencies: Seq[Dependency],
     forceVersion: Map[Module, String] = Map(),
     classifiers: Seq[Classifier] = null,
-    forceScala: (Organization, String) = null
+    forceScala: (Organization, String) = null,
+    name: String = ""
   ): Seq[File] =
     artifacts(
       dependencies,
       forceVersion,
       classifiers,
-      forceScala
+      forceScala,
+      name
     ) match {
       case Left(err) =>
         System.err.println(err.getMessage)
@@ -261,13 +269,15 @@ final case class ResolutionCache(
     dependency: Dependency,
     forceVersion: Map[Module, String] = Map(),
     classifiers: Seq[Classifier] = null,
-    forceScala: (Organization, String) = null
+    forceScala: (Organization, String) = null,
+    name: String = ""
   ): File =
     artifacts(
       Seq(dependency.copy(transitive = false)),
       forceVersion,
       classifiers,
-      forceScala
+      forceScala,
+      name
     ) match {
       case Left(err) =>
         System.err.println(err.getMessage)
