@@ -40,7 +40,7 @@ lazy val `sbt-launcher` = project
 
       p.setProperty("version", ver)
       p.setProperty("commit-hash", Seq("git", "rev-parse", "HEAD").!!.trim)
-      p.setProperty("sbt-coursier-default-version", coursierVersion) // FIXME Should be sbtCoursierVersion
+      p.setProperty("sbt-coursier-default-version", sbtCoursierVersion)
 
       val w = new java.io.FileOutputStream(f)
       p.store(w, "coursier sbt-launcher properties")
