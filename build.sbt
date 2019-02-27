@@ -13,10 +13,28 @@ inThisBuild(List(
   )
 ))
 
+def scala212 = "2.12.8"
+def scala210 = "2.10.7"
+
+lazy val `sbt-launcher-plugin` = project
+  .settings(
+    sbtPlugin := true,
+    scalaVersion := scala212,
+    crossScalaVersions := Seq(scala212, scala210),
+    sbtVersion.in(pluginCrossBuild) := {
+      scalaBinaryVersion.value match {
+        case "2.10" => "0.13.8"
+        case "2.12" => "1.0.1"
+        case _ => sbtVersion.in(pluginCrossBuild).value
+      }
+    }
+  )
+
 lazy val `sbt-launcher` = project
   .enablePlugins(PackPlugin)
   .settings(
-    scalaVersion := "2.12.8",
+    scalaVersion := scala212,
+    crossScalaVersions := Seq(scala212),
     scalacOptions ++= Seq("-feature", "-deprecation"),
     libraryDependencies ++= Seq(
       "io.get-coursier" %% "coursier" % "1.1.0-M12",
@@ -54,4 +72,7 @@ lazy val `sbt-launcher` = project
 
 lazy val `coursier-sbt-launcher` = project
   .in(file("."))
-  .aggregate(`sbt-launcher`)
+  .aggregate(
+    `sbt-launcher`,
+    `sbt-launcher-plugin`
+  )

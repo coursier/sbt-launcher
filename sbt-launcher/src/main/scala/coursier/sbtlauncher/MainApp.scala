@@ -5,6 +5,7 @@ import java.nio.file.Paths
 import java.util.regex.Pattern
 
 import caseapp._
+import coursier.core.Version
 import coursier.sbtlauncher.implem.{AppConfiguration, ApplicationID, Launcher}
 import coursier.{Dependency, Module, moduleNameString, organizationString}
 
@@ -62,12 +63,30 @@ object MainApp extends CaseApp[MainOptions] {
     scalaVersion: String,
     sbtVersion: String,
     sbtBinaryVersion: String,
+    addSbtLauncherPlugin: Boolean,
     sbtCoursierVersionOpt: Option[String],
     userExtraDeps: Seq[Dependency]
   ) {
 
     def isSbt0x: Boolean =
       sbtVersion.startsWith("0.")
+
+    private def sbtLauncherPluginDepOpt =
+      if (addSbtLauncherPlugin) {
+        Some(
+          Dependency(
+            Module(
+              org"io.get-coursier", name"sbt-launcher-plugin",
+              attributes = Map(
+                "scalaVersion" -> scalaVersion.split('.').take(2).mkString("."),
+                "sbtVersion" -> sbtBinaryVersion
+              )
+            ),
+            Properties.version
+          )
+        )
+      } else
+        None
 
     private def coursierDepOpt: Option[Dependency] =
       sbtCoursierVersionOpt.flatMap { sbtCoursierVersion =>
@@ -89,7 +108,7 @@ object MainApp extends CaseApp[MainOptions] {
       }
 
     def extraDeps: Seq[Dependency] =
-      userExtraDeps ++ coursierDepOpt.toSeq
+      userExtraDeps ++ sbtLauncherPluginDepOpt.toSeq ++ coursierDepOpt.toSeq
   }
 
   @tailrec
@@ -171,25 +190,26 @@ object MainApp extends CaseApp[MainOptions] {
       case Right(deps) => deps
     }
 
-    val sbtCoursierVersionOpt = sbtCoursierVersionFromPluginsSbt(new File(sys.props("user.dir") + "/project")) match {
-      case None =>
-        Some {
+    val sbtCoursierVersionOpt =
+      if (options.addCoursier) {
+
+        val fromProject = sbtCoursierVersionFromPluginsSbt(new File(sys.props("user.dir") + "/project"))
+        val global = sbtCoursierVersionFromPluginsSbt(new File(sys.props("sbt.global.base") + "/plugins"))
+
+        val existingOpt =
+          (fromProject.toSeq ++ global.toSeq)
+            .sortBy { case (v, _) => coursier.core.Version(v) }
+            .lastOption
+
+        def latest =
           if (config.sbtVersion.startsWith("0.13."))
             "1.1.0-M7" // last sbt 0.13 compatible version
           else
             Properties.sbtCoursierDefaultVersion
-        }
-      case Some((v, f)) =>
-        val before110M12 = coursier.core.Version(v).compare(coursier.core.Version("1.1.0-M12")) < 0
-        if (before110M12) {
-          if (options.addCoursier) {
-            System.err.println(s"Found sbt-coursier version $v < 1.1.0-M12 in $f, which may not work with the coursier-based sbt launcher")
-            Some(v)
-          } else
-            None
-        } else
-          Some(v)
-    }
+
+        Some(existingOpt.fold(latest)(_._1))
+      } else
+        None
 
     val appId = ApplicationID(
       config.organization,
@@ -209,7 +229,8 @@ object MainApp extends CaseApp[MainOptions] {
         config.scalaVersion,
         config.sbtVersion,
         config.sbtBinaryVersion,
-        if (options.addCoursier) sbtCoursierVersionOpt else None,
+        addSbtLauncherPlugin = sbtCoursierVersionOpt.exists(v => Version(v).compare(Version("1.1.0-M12")) < 0),
+        sbtCoursierVersionOpt,
         config.dependencies ++ extraDeps
       )
     )
