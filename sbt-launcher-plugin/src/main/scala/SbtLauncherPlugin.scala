@@ -1,10 +1,14 @@
 
 import sbt._
 import sbt.Keys.{fullResolvers, projectDescriptors, streams}
+import sbt.plugins.JvmPlugin
 
 object SbtLauncherPlugin extends AutoPlugin {
 
   override def trigger = allRequirements
+
+  // seems this is needed for sbt 0.13.x
+  override def requires = JvmPlugin
 
   object autoImport {
     val `sbt-launcher-setup` = taskKey[Unit]("")
