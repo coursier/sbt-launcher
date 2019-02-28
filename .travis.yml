@@ -21,7 +21,7 @@ jobs:
     - stage: release
       script: sbt ci-release
     - stage: upload-launcher
-      env: REPO="coursier/sbt-launcher" NAME="csbt" CMD="./generate-csbt.sh -f --bat=true"
+      env: REPO="coursier/sbt-launcher" NAME="csbt" CMD="./scripts/generate-csbt.sh -f --bat=true"
       script: scripts/upload-launcher/upload-gh-release.sh
 cache:
   directories:
