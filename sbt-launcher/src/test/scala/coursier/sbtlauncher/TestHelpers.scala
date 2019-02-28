@@ -13,7 +13,7 @@ object TestHelpers {
 
   val launcher = {
     val p = Paths.get("target/test-csbt")
-    val b = new ProcessBuilder("/bin/bash", "-c", "./generate-csbt.sh -r ivy2Local -f")
+    val b = new ProcessBuilder("/bin/bash", "-c", "./scripts/generate-csbt.sh -r ivy2Local -f")
       .redirectOutput(Redirect.INHERIT)
       .redirectError(Redirect.INHERIT)
       .redirectInput(Redirect.PIPE)
