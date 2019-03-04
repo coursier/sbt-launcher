@@ -12,7 +12,7 @@ else
   COURSIER="target/coursier"
   if [ ! -e "$COURSIER" ]; then
     mkdir -p "$(dirname "$COURSIER")"
-    curl -Lo "$COURSIER" https://github.com/coursier/coursier/raw/v1.1.0-M9/coursier
+    curl -Lo "$COURSIER" https://github.com/coursier/coursier/releases/download/v1.1.0-M12/coursier
     chmod +x "$COURSIER"
   fi
 fi
