@@ -5,6 +5,7 @@ import java.nio.file.Paths
 import java.util.regex.Pattern
 
 import caseapp._
+import com.typesafe.config.ConfigFactory
 import coursier.core.Version
 import coursier.sbtlauncher.implem.{AppConfiguration, ApplicationID, Launcher}
 import coursier.{Dependency, Module, moduleNameString, organizationString}
@@ -72,7 +73,7 @@ object MainApp extends CaseApp[MainOptions] {
       sbtVersion.startsWith("0.")
 
     private def sbtLauncherPluginDepOpt =
-      if (addSbtLauncherPlugin) {
+      if (addSbtLauncherPlugin)
         Some(
           Dependency(
             Module(
@@ -85,8 +86,25 @@ object MainApp extends CaseApp[MainOptions] {
             Properties.version
           )
         )
-      } else
+      else
         None
+
+    private def sbtLauncherScriptedPluginDepOpt =
+      if (sbtBinaryVersion.startsWith("0.") || sbtVersion.startsWith("1.0.") || sbtVersion.startsWith("1.1."))
+        None
+      else
+        Some(
+          Dependency(
+            Module(
+              org"io.get-coursier", name"sbt-launcher-scripted-plugin",
+              attributes = Map(
+                "scalaVersion" -> scalaVersion.split('.').take(2).mkString("."),
+                "sbtVersion" -> sbtBinaryVersion
+              )
+            ),
+            Properties.version
+          )
+        )
 
     private def coursierDepOpt: Option[Dependency] =
       sbtCoursierVersionOpt.flatMap { sbtCoursierVersion =>
@@ -108,8 +126,52 @@ object MainApp extends CaseApp[MainOptions] {
       }
 
     def extraDeps: Seq[Dependency] =
-      userExtraDeps ++ sbtLauncherPluginDepOpt.toSeq ++ coursierDepOpt.toSeq
+      userExtraDeps ++ sbtLauncherPluginDepOpt.toSeq ++ sbtLauncherScriptedPluginDepOpt.toSeq ++ coursierDepOpt.toSeq
   }
+
+  val projectDir = new File(s"${sys.props("user.dir")}")
+
+  val targetDir =
+    sys.props.get("coursier.sbt-launcher.dirs.base") match {
+      case None =>
+        // Putting stuff under "project/target" rather than just "target" so that this doesn't get wiped out
+        // when running the clean command from sbt.
+        new File(projectDir, "project/target")
+      case Some(p) =>
+        new File(p)
+    }
+
+  val coursierResolutionCache =
+    sys.props.get("coursier.sbt-launcher.dirs.resolution-cache") match {
+      case None =>
+        new File(targetDir, "coursier-resolution-cache")
+      case Some(p) =>
+        new File(p)
+    }
+
+  val scalaJarDir =
+    sys.props.get("coursier.sbt-launcher.dirs.scala-jars") match {
+      case None =>
+        new File(targetDir, "scala-jars")
+      case Some(p) =>
+        new File(p)
+    }
+
+  val sbtComponents =
+    sys.props.get("coursier.sbt-launcher.dirs.sbt-components") match {
+      case None =>
+        new File(targetDir, "sbt-components")
+      case Some(p) =>
+        new File(p)
+    }
+
+  val ivy2 =
+    sys.props.get("coursier.sbt-launcher.dirs.ivy2") match {
+      case None =>
+        new File(targetDir, "ivy2")
+      case Some(p) =>
+        new File(p)
+    }
 
   @tailrec
   private def doRun(
@@ -118,19 +180,14 @@ object MainApp extends CaseApp[MainOptions] {
     params: RunParams
   ): Unit = {
 
-    val projectDir = new File(s"${sys.props("user.dir")}")
-    // Putting stuff under "project/target" rather than just "target" so that this doesn't get wiped out
-    // when running the clean command from sbt.
-    val targetDir = new File(projectDir, "project/target")
-
     log("Creating launcher")
     val launcher = new Launcher(
       params.scalaVersion,
-      Some(new File(targetDir, "coursier-resolution-cache")),
-      new File(targetDir, "scala-jars"),
+      Some(coursierResolutionCache),
+      scalaJarDir,
       // FIXME Add org & moduleName in this path
-      new File(targetDir, s"sbt-components/components_scala${params.scalaVersion}${if (params.sbtVersion.isEmpty) "" else "_sbt" + params.sbtVersion}"),
-      new File(targetDir, "ivy2"),
+      new File(sbtComponents, s"components_scala${params.scalaVersion}${if (params.sbtVersion.isEmpty) "" else "_sbt" + params.sbtVersion}"),
+      ivy2,
       log
     )
 
@@ -176,12 +233,19 @@ object MainApp extends CaseApp[MainOptions] {
 
   def run(options: MainOptions, remainingArgs: RemainingArgs): Unit = {
 
-    val config =
+    val config = options.sbtConfig.orElse {
       SbtConfig.fromProject(Paths.get(sys.props("user.dir")))
-        .fold(options.sbtConfig)(options.sbtConfig orElse _)
+        .getOrElse(SbtConfig.fromConfig(ConfigFactory.systemProperties()))
+    }
 
     if (!sys.props.contains("sbt.global.base"))
       sys.props("sbt.global.base") = defaultBase(config.sbtBinaryVersion)
+
+    if (!sys.props.contains("coursier.sbt-launcher.version"))
+      sys.props("coursier.sbt-launcher.version") = Properties.version
+
+    if (!sys.props.contains("coursier.sbt-launcher.jar"))
+      sys.props("coursier.sbt-launcher.jar") = sys.props("coursier.mainJar")
 
     val extraDeps = options.extraDependencies(config.scalaVersion) match {
       case Left(errors) =>

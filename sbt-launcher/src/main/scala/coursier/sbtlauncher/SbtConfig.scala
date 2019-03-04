@@ -35,6 +35,8 @@ final case class SbtConfig(
       sbtVersion.split('.').take(2) match {
         case Array("0", v) => s"0.$v"
         case Array(major, _) => s"$major.0"
+        case _ =>
+          sys.error(s"Malformed sbt version '$sbtVersion'")
       }
 }
 
