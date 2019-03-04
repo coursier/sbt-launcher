@@ -30,6 +30,19 @@ lazy val `sbt-launcher-plugin` = project
     }
   )
 
+lazy val `sbt-launcher-scripted-plugin` = project
+  .settings(
+    sbtPlugin := true,
+    scalaVersion := scala212,
+    crossScalaVersions := Seq(scala212),
+    sbtVersion.in(pluginCrossBuild) := {
+      scalaBinaryVersion.value match {
+        case "2.12" => "1.2.0"
+        case _ => sbtVersion.in(pluginCrossBuild).value
+      }
+    }
+  )
+
 lazy val `sbt-launcher` = project
   .enablePlugins(PackPlugin)
   .settings(
@@ -74,5 +87,6 @@ lazy val `coursier-sbt-launcher` = project
   .in(file("."))
   .aggregate(
     `sbt-launcher`,
-    `sbt-launcher-plugin`
+    `sbt-launcher-plugin`,
+    `sbt-launcher-scripted-plugin`
   )

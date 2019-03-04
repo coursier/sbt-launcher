@@ -73,7 +73,7 @@ object MainApp extends CaseApp[MainOptions] {
       sbtVersion.startsWith("0.")
 
     private def sbtLauncherPluginDepOpt =
-      if (addSbtLauncherPlugin) {
+      if (addSbtLauncherPlugin)
         Some(
           Dependency(
             Module(
@@ -86,8 +86,25 @@ object MainApp extends CaseApp[MainOptions] {
             Properties.version
           )
         )
-      } else
+      else
         None
+
+    private def sbtLauncherScriptedPluginDepOpt =
+      if (sbtBinaryVersion.startsWith("0.") || sbtVersion.startsWith("1.0.") || sbtVersion.startsWith("1.1."))
+        None
+      else
+        Some(
+          Dependency(
+            Module(
+              org"io.get-coursier", name"sbt-launcher-scripted-plugin",
+              attributes = Map(
+                "scalaVersion" -> scalaVersion.split('.').take(2).mkString("."),
+                "sbtVersion" -> sbtBinaryVersion
+              )
+            ),
+            Properties.version
+          )
+        )
 
     private def coursierDepOpt: Option[Dependency] =
       sbtCoursierVersionOpt.flatMap { sbtCoursierVersion =>
@@ -109,7 +126,7 @@ object MainApp extends CaseApp[MainOptions] {
       }
 
     def extraDeps: Seq[Dependency] =
-      userExtraDeps ++ sbtLauncherPluginDepOpt.toSeq ++ coursierDepOpt.toSeq
+      userExtraDeps ++ sbtLauncherPluginDepOpt.toSeq ++ sbtLauncherScriptedPluginDepOpt.toSeq ++ coursierDepOpt.toSeq
   }
 
   val projectDir = new File(s"${sys.props("user.dir")}")
@@ -223,6 +240,12 @@ object MainApp extends CaseApp[MainOptions] {
 
     if (!sys.props.contains("sbt.global.base"))
       sys.props("sbt.global.base") = defaultBase(config.sbtBinaryVersion)
+
+    if (!sys.props.contains("coursier.sbt-launcher.version"))
+      sys.props("coursier.sbt-launcher.version") = Properties.version
+
+    if (!sys.props.contains("coursier.sbt-launcher.jar"))
+      sys.props("coursier.sbt-launcher.jar") = sys.props("coursier.mainJar")
 
     val extraDeps = options.extraDependencies(config.scalaVersion) match {
       case Left(errors) =>
