@@ -18,6 +18,7 @@ stages:
 script: sbt -batch ++${TRAVIS_SCALA_VERSION} +publishLocal "testOnly coursier.sbtlauncher.${TEST_NAME}"
 jobs:
   include:
+    - env: TEST_NAME=ScriptedTests
     - env: TEST_NAME=SbtPre12Tests
     - env: TEST_NAME=Sbt1203Tests
     - env: TEST_NAME=Sbt12Tests

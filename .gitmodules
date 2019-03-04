@@ -49,3 +49,9 @@
 [submodule "tests/case-app-sbt-1.2.6-global-plugins"]
 	path = tests/case-app-sbt-1.2.7-global-plugins
 	url = https://github.com/alexarchambault/case-app.git
+[submodule "tests/sbt-dynver-sbt-1.2.8"]
+	path = tests/sbt-dynver-sbt-1.2.8
+	url = https://github.com/dwijnand/sbt-dynver.git
+[submodule "tests/sbt-dynver-sbt-1.1.6"]
+	path = tests/sbt-dynver-sbt-1.1.6
+	url = https://github.com/dwijnand/sbt-dynver.git
