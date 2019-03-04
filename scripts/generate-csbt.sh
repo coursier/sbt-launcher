@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -e
 
-cd "$(dirname "${BASH_SOURCE[0]}")"
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 VERSION="${VERSION:-1.1.0}"
 OUTPUT="${OUTPUT:-csbt}"
