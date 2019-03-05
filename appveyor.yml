@@ -1,0 +1,17 @@
+version: '{build}'
+os: Windows Server 2012
+install:
+  - cmd: mkdir C:\sbt
+  - cmd: curl -Lo C:\sbt\sbt https://github.com/coursier/sbt-launcher/releases/download/v1.2.3/csbt
+  - cmd: curl -Lo C:\sbt\sbt.bat https://github.com/coursier/sbt-launcher/releases/download/v1.2.3/csbt.bat
+  - cmd: SET JAVA_HOME=C:\Program Files\Java\jdk1.8.0
+  - cmd: SET PATH=C:\sbt;%JAVA_HOME%\bin;%PATH%
+  - cmd: SET JAVA_OPTS=-Xmx4g -Xss2m -Djline.shutdownhook=false -Djna.nosys=true
+  - git submodule update --init --recursive
+build_script:
+  - sbt +test:compile
+test_script:
+  - sbt +publishLocal "testOnly coursier.sbtlauncher.ScriptedTests"
+branches:
+  only:
+    - master

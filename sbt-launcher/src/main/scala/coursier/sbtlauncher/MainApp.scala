@@ -25,12 +25,12 @@ object MainApp extends CaseApp[MainOptions] {
   private def defaultBase(sbtBinaryVersion: String): String =
     s"${sys.props("user.home")}/.sbt/$sbtBinaryVersion"
 
-  private def sbtCoursierVersionFromPluginsSbt(dir: File): Option[(String, File)] = {
+  private def sbtCoursierVersionFromPluginsSbt(dir: File, pluginName: String = "sbt-coursier"): Option[(String, File)] = {
 
     val pattern = (
       Pattern.quote("\"io.get-coursier\"") + "\\s+" +
         Pattern.quote("%") + "\\s+" +
-        Pattern.quote("\"sbt-coursier\"") + "\\s+" +
+        Pattern.quote("\"" + pluginName + "\"") + "\\s+" +
         Pattern.quote("%") + "\\s+" +
         Pattern.quote("\"") + "([^\"]+)" + Pattern.quote("\"")
     ).r
@@ -66,6 +66,7 @@ object MainApp extends CaseApp[MainOptions] {
     sbtBinaryVersion: String,
     addSbtLauncherPlugin: Boolean,
     sbtCoursierVersionOpt: Option[String],
+    sbtLmCoursierVersionOpt: Option[String],
     userExtraDeps: Seq[Dependency]
   ) {
 
@@ -125,8 +126,31 @@ object MainApp extends CaseApp[MainOptions] {
           None
       }
 
+    private def lmCoursierDepOpt: Option[Dependency] =
+      sbtLmCoursierVersionOpt.flatMap { sbtLmCoursierVersion =>
+        if (sbtVersion.nonEmpty)
+          Some(
+            Dependency(
+              Module(
+                org"io.get-coursier", name"sbt-lm-coursier",
+                attributes = Map(
+                  "scalaVersion" -> scalaVersion.split('.').take(2).mkString("."),
+                  "sbtVersion" -> sbtBinaryVersion
+                )
+              ),
+              sbtLmCoursierVersion
+            )
+          )
+        else
+          None
+      }
+
     def extraDeps: Seq[Dependency] =
-      userExtraDeps ++ sbtLauncherPluginDepOpt.toSeq ++ sbtLauncherScriptedPluginDepOpt.toSeq ++ coursierDepOpt.toSeq
+      userExtraDeps ++
+        sbtLauncherPluginDepOpt.toSeq ++
+        sbtLauncherScriptedPluginDepOpt.toSeq ++
+        coursierDepOpt.toSeq ++
+        lmCoursierDepOpt.toSeq
   }
 
   val projectDir = new File(s"${sys.props("user.dir")}")
@@ -233,6 +257,9 @@ object MainApp extends CaseApp[MainOptions] {
 
   def run(options: MainOptions, remainingArgs: RemainingArgs): Unit = {
 
+    if (!sys.props.contains("jna.nosys"))
+      sys.props("jna.nosys") = "true"
+
     val config = options.sbtConfig.orElse {
       SbtConfig.fromProject(Paths.get(sys.props("user.dir")))
         .getOrElse(SbtConfig.fromConfig(ConfigFactory.systemProperties()))
@@ -254,26 +281,52 @@ object MainApp extends CaseApp[MainOptions] {
       case Right(deps) => deps
     }
 
-    val sbtCoursierVersionOpt =
+    val foundSbtCoursierVersionOpt =
       if (options.addCoursier) {
 
         val fromProject = sbtCoursierVersionFromPluginsSbt(new File(sys.props("user.dir") + "/project"))
         val global = sbtCoursierVersionFromPluginsSbt(new File(sys.props("sbt.global.base") + "/plugins"))
 
-        val existingOpt =
-          (fromProject.toSeq ++ global.toSeq)
-            .sortBy { case (v, _) => coursier.core.Version(v) }
-            .lastOption
-
-        def latest =
-          if (config.sbtVersion.startsWith("0.13."))
-            "1.1.0-M7" // last sbt 0.13 compatible version
-          else
-            Properties.sbtCoursierDefaultVersion
-
-        Some(existingOpt.fold(latest)(_._1))
+        (fromProject.toSeq ++ global.toSeq)
+          .sortBy { case (v, _) => coursier.core.Version(v) }
+          .lastOption
+          .map(_._1)
       } else
         None
+
+    val foundSbtLmCoursierVersionOpt =
+      if (!config.sbtVersion.startsWith("0.") && options.addCoursier) {
+
+        val fromProject = sbtCoursierVersionFromPluginsSbt(new File(sys.props("user.dir") + "/project"), "sbt-lm-coursier")
+        val global = sbtCoursierVersionFromPluginsSbt(new File(sys.props("sbt.global.base") + "/plugins"), "sbt-lm-coursier")
+
+        (fromProject.toSeq ++ global.toSeq)
+          .sortBy { case (v, _) => coursier.core.Version(v) }
+          .lastOption
+          .map(_._1)
+      } else
+        None
+
+    def latest =
+      if (config.sbtVersion.startsWith("0.13."))
+        "1.1.0-M7" // last sbt 0.13 compatible version
+      else
+        Properties.sbtCoursierDefaultVersion
+
+    val (sbtCoursierVersionOpt, sbtLmCoursierVersionOpt) =
+      if (options.addCoursier)
+        (foundSbtCoursierVersionOpt, foundSbtLmCoursierVersionOpt) match {
+          case (Some(v), _) =>
+            (Some(v), None)
+          case (None, Some(v)) =>
+            (None, Some(v))
+          case (None, None) =>
+            (Some(latest), None)
+        }
+      else
+        (None, None)
+
+    // TODO Warn if both sbt-coursier and sbt-lm-coursier are found?
 
     val appId = ApplicationID(
       config.organization,
@@ -295,6 +348,7 @@ object MainApp extends CaseApp[MainOptions] {
         config.sbtBinaryVersion,
         addSbtLauncherPlugin = sbtCoursierVersionOpt.exists(v => Version(v).compare(Version("1.1.0-M12")) < 0),
         sbtCoursierVersionOpt,
+        sbtLmCoursierVersionOpt,
         config.dependencies ++ extraDeps
       )
     )
