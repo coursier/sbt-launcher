@@ -16,7 +16,8 @@ final case class MainOptions(
   mainComponents: List[String] = Nil,
   classpathExtra: List[String] = Nil,
   extra: List[String] = Nil,
-  addCoursier: Boolean = MainOptions.defaultAddCoursier
+  addCoursier: Boolean = MainOptions.defaultAddCoursier,
+  coursierPlugin: Option[String] = None
 ) {
   def sbtConfig: SbtConfig =
     SbtConfig(
