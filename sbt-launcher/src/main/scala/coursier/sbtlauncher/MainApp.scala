@@ -307,12 +307,6 @@ object MainApp extends CaseApp[MainOptions] {
       } else
         None
 
-    def latest =
-      if (config.sbtVersion.startsWith("0.13."))
-        "1.1.0-M7" // last sbt 0.13 compatible version
-      else
-        Properties.sbtCoursierDefaultVersion
-
     val (sbtCoursierVersionOpt, sbtLmCoursierVersionOpt) =
       if (options.addCoursier)
         (foundSbtCoursierVersionOpt, foundSbtLmCoursierVersionOpt) match {
@@ -321,7 +315,19 @@ object MainApp extends CaseApp[MainOptions] {
           case (None, Some(v)) =>
             (None, Some(v))
           case (None, None) =>
-            (Some(latest), None)
+            if (config.sbtVersion.startsWith("0.13."))
+              (Some("1.1.0-M7"), None) // last sbt 0.13 compatible version
+            else
+              // now adding sbt-lm-coursier by default, that adds a coursier-based DependencyResolution in particular
+              options.coursierPlugin.getOrElse("sbt-lm-coursier") match {
+                case "sbt-coursier" =>
+                  (Some(Properties.sbtCoursierDefaultVersion), None)
+                case "sbt-lm-coursier" =>
+                  (None, Some(Properties.sbtCoursierDefaultVersion))
+                case other =>
+                  System.err.println(s"Unrecognized coursier plugin: $other")
+                  sys.exit(1)
+              }
         }
       else
         (None, None)
