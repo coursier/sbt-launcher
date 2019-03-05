@@ -51,6 +51,18 @@ object Sbt12Tests extends TestSuite {
             sbtCommands = Seq("stage", "check")
           )
         }
+
+        "sbt-lm-coursier via variable" - {
+          // In this project, the project/**.sbt files can't be matched to find the plugin or version used, but it adds
+          // sbt-lm-coursier nevertheless. Things should still work fine for it with the right Java property.
+          val dir = Paths.get("tests/sbt-lm-coursier-proj-variable")
+          run(
+            dir,
+            "1.2.8",
+            sbtCommands = Seq("stage", "check"),
+            extraJavaOpts = Seq("-Dcoursier.sbt-launcher.add-plugin=false")
+          )
+        }
       }
     }
 

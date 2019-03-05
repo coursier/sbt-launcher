@@ -41,6 +41,7 @@ object TestHelpers {
     dir: Path,
     sbtVersion: String,
     sbtCommands: Seq[String] = Seq("update", "updateClassifiers", "test:compile", "test"),
+    extraJavaOpts: Seq[String] = Nil,
     forceSbtVersion: Boolean = false,
     globalPlugins: Seq[String] = Nil
   ): Unit = {
@@ -90,7 +91,7 @@ object TestHelpers {
       launcher.toAbsolutePath.toString,
       "-J-Dsbt.global.base=" + sbtDir.toAbsolutePath,
       "-J-Dsbt.ivy.home=" + ivyHome.toAbsolutePath
-    ) ++ extraArgs ++ sbtCommands
+    ) ++ extraJavaOpts.map("-J" + _) ++ extraArgs ++ sbtCommands
     Console.err.println("Running")
     Console.err.println(s"  ${cmd.mkString(" ")}")
     Console.err.println(s"in directory $dir")

@@ -1,5 +1,7 @@
 package coursier.sbtlauncher
 
+import java.util.Locale
+
 import caseapp.ExtraName
 import coursier.Dependency
 
@@ -14,7 +16,7 @@ final case class MainOptions(
   mainComponents: List[String] = Nil,
   classpathExtra: List[String] = Nil,
   extra: List[String] = Nil,
-  addCoursier: Boolean = true
+  addCoursier: Boolean = MainOptions.defaultAddCoursier
 ) {
   def sbtConfig: SbtConfig =
     SbtConfig(
@@ -41,4 +43,11 @@ final case class MainOptions(
         }
       )
   }
+}
+
+object MainOptions {
+  def defaultAddCoursier: Boolean =
+    sys.env.get("COURSIER_SBT_LAUNCHER_ADD_PLUGIN")
+      .orElse(sys.props.get("coursier.sbt-launcher.add-plugin"))
+      .forall(s => s.toLowerCase(Locale.ROOT) == "true" || s == "1")
 }
