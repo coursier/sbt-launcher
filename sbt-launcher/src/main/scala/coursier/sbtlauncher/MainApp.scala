@@ -233,6 +233,9 @@ object MainApp extends CaseApp[MainOptions] {
 
   def run(options: MainOptions, remainingArgs: RemainingArgs): Unit = {
 
+    if (!sys.props.contains("jna.nosys"))
+      sys.props("jna.nosys") = "true"
+
     val config = options.sbtConfig.orElse {
       SbtConfig.fromProject(Paths.get(sys.props("user.dir")))
         .getOrElse(SbtConfig.fromConfig(ConfigFactory.systemProperties()))
