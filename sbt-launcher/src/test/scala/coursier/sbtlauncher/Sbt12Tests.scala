@@ -43,6 +43,15 @@ object Sbt12Tests extends TestSuite {
       }
 
       "2.8" - {
+        "reboot" - {
+          val dir = Paths.get("tests/sbt-lm-coursier-proj")
+          run(
+            dir,
+            "1.2.8",
+            sbtCommands = Seq("stage", "reboot", "check")
+          )
+        }
+
         "sbt-lm-coursier" - {
           val dir = Paths.get("tests/sbt-lm-coursier-proj")
           run(
