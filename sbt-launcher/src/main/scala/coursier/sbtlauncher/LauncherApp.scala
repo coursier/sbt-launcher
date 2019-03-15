@@ -12,7 +12,7 @@ import coursier.{Dependency, Module, moduleNameString, organizationString}
 
 import scala.annotation.tailrec
 
-object MainApp extends CaseApp[MainOptions] {
+object LauncherApp extends CaseApp[LauncherOptions] {
 
   private val debug: Boolean =
     sys.props.contains("coursier.sbt-launcher.debug") ||
@@ -265,7 +265,7 @@ object MainApp extends CaseApp[MainOptions] {
     }
   }
 
-  def run(options: MainOptions, remainingArgs: RemainingArgs): Unit = {
+  def run(options: LauncherOptions, remainingArgs: RemainingArgs): Unit = {
 
     if (!sys.props.contains("jna.nosys"))
       sys.props("jna.nosys") = "true"
