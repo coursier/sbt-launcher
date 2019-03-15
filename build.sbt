@@ -56,6 +56,7 @@ lazy val `sbt-launcher` = project
       "com.typesafe" % "config" % "1.3.3",
       "com.lihaoyi" %% "utest" % "0.6.6" % "test"
     ),
+    mainClass.in(Compile) := Some("coursier.sbtlauncher.MainApp"),
     test.in(Test) := test.in(Test).dependsOn(publishLocal).value,
     testFrameworks += new TestFramework("utest.runner.Framework"),
     resourceGenerators.in(Compile) += Def.task {

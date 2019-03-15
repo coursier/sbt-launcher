@@ -90,8 +90,9 @@ object TestHelpers {
     val cmd = Seq(
       launcher.toAbsolutePath.toString,
       "-J-Dsbt.global.base=" + sbtDir.toAbsolutePath,
-      "-J-Dsbt.ivy.home=" + ivyHome.toAbsolutePath
-    ) ++ extraJavaOpts.map("-J" + _) ++ extraArgs ++ sbtCommands
+      "-J-Dsbt.ivy.home=" + ivyHome.toAbsolutePath,
+      "-J-Dcoursier.sbt-launcher.parse-args=true"
+    ) ++ extraJavaOpts.map("-J" + _) ++ extraArgs ++ Seq("--") ++ sbtCommands
     Console.err.println("Running")
     Console.err.println(s"  ${cmd.mkString(" ")}")
     Console.err.println(s"in directory $dir")
