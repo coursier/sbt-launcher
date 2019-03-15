@@ -235,17 +235,27 @@ object MainApp extends CaseApp[MainOptions] {
     val result =
       try {
         thread.setContextClassLoader(appProvider.loader())
-        appMain.run(appConfig)
+        Right(appMain.run(appConfig))
+      } catch {
+        case r: xsbti.FullReload =>
+          Left(r)
       } finally {
         thread.setContextClassLoader(previousLoader)
       }
     log("Done")
 
     result match {
-      case _: xsbti.Continue =>
-      case e: xsbti.Exit =>
+      case Left(fullReload) =>
+        // default sbt launcher also cleans launcher.bootDirectory, but it's unused here
+        doRun(
+          appId,
+          fullReload.arguments(),
+          params
+        )
+      case Right(_: xsbti.Continue) =>
+      case Right(e: xsbti.Exit) =>
         sys.exit(e.code())
-      case r: xsbti.Reboot =>
+      case Right(r: xsbti.Reboot) =>
         // xsbti.Reboot also has a baseDirectory method, not sure how it is used in the sbt launcher implementation
         doRun(
           r.app(),
