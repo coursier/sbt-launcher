@@ -3,7 +3,11 @@ set -e
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
-VERSION="${VERSION:-1.1.0}"
+default_version() {
+  git describe --tags --abbrev=0 | sed 's@^v@@'
+}
+
+VERSION="${VERSION:-$(default_version)}"
 OUTPUT="${OUTPUT:-csbt}"
 
 if which coursier >/dev/null 2>&1; then
