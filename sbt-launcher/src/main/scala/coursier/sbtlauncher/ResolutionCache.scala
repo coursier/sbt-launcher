@@ -6,7 +6,7 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path}
 import java.security.MessageDigest
 
-import coursier.cache.FileCache
+import coursier.cache.{CacheLogger, CachePolicy, FileCache}
 import coursier.cache.loggers.{FileTypeRefreshDisplay, RefreshLogger}
 import coursier.core.{Artifact, Classifier, Organization}
 import coursier.params.ResolutionParams
@@ -21,9 +21,6 @@ final case class ResolutionCache(
   import ResolutionCache._
 
   private val cache = FileCache()
-    .withLogger(
-      RefreshLogger.create(FileTypeRefreshDisplay.create())
-    )
 
   private def actualArtifacts(
     dependencies: Seq[Dependency],
@@ -46,6 +43,37 @@ final case class ResolutionCache(
         } else
           name
 
+      val msg = s"Getting $name0"
+      var alreadyPrinted = false
+
+      val cache0 = cache.withLogger(
+        RefreshLogger.create(
+          FileTypeRefreshDisplay.create(
+            keepOnScreen = true,
+            beforeOutput = {
+              if (!alreadyPrinted) {
+                System.err.println(msg)
+                alreadyPrinted = true
+              }
+            },
+            afterOutput = ()
+          )
+        )
+      )
+
+      val (firstCache, otherCaches) =
+        if (cache0.cachePolicies == CachePolicy.noEnvDefault) {
+
+          val first = cache0
+            .withLogger(CacheLogger.nop)
+            .withCachePolicies(Seq(CachePolicy.LocalOnlyIfValid))
+          val others = cache0
+            .withCachePolicies(cache0.cachePolicies.filter(_ != CachePolicy.LocalUpdateChanging))
+
+          (first, Seq(others))
+        } else
+          (cache0, Nil)
+
       val classifiers = classifiersOpt.getOrElse(Nil).toSet
       Fetch()
         .addDependencies(dependencies: _*)
@@ -55,7 +83,9 @@ final case class ResolutionCache(
           ResolutionParams()
             .withForceVersion(forceVersion)
         )
-        .withCache(cache)
+        .withResolveCache(cache0)
+        .withArtifactsCache(firstCache)
+        .withOtherArtifactsCaches(otherCaches)
         .eitherResult()
         .map(_._2)
     }
