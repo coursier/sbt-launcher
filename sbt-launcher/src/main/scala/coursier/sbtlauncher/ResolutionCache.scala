@@ -49,7 +49,7 @@ final case class ResolutionCache(
       val classifiers = classifiersOpt.getOrElse(Nil).toSet
       Fetch()
         .addDependencies(dependencies: _*)
-        .addRepositories(repositories: _*)
+        .withRepositories(repositories)
         .withClassifiers(classifiers)
         .withResolutionParams(
           ResolutionParams()
