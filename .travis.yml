@@ -29,6 +29,10 @@ jobs:
       script: scripts/upload-launcher/upload-gh-release.sh
     - stage: update-sbt-extras
       script: scripts/update-sbt-extras.sh
+branches:
+  only:
+  - master
+  - /^v\d+\.\d+.*$/ # tagged versions
 cache:
   directories:
   - "$HOME/.cache"
