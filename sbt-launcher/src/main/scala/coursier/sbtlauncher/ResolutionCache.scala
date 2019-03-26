@@ -6,9 +6,9 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path}
 import java.security.MessageDigest
 
-import coursier.cache.FileCache
+import coursier.cache.{CacheLogger, CachePolicy, FileCache}
 import coursier.cache.loggers.{FileTypeRefreshDisplay, RefreshLogger}
-import coursier.core.{Artifact, Classifier, Organization, Type}
+import coursier.core.{Artifact, Classifier, Organization}
 import coursier.params.ResolutionParams
 import coursier.{Dependency, Fetch, Module, moduleNameString}
 
@@ -21,9 +21,6 @@ final case class ResolutionCache(
   import ResolutionCache._
 
   private val cache = FileCache()
-    .withLogger(
-      RefreshLogger.create(FileTypeRefreshDisplay.create())
-    )
 
   private def actualArtifacts(
     dependencies: Seq[Dependency],
@@ -46,29 +43,50 @@ final case class ResolutionCache(
         } else
           name
 
+      val msg = s"Getting $name0"
+      var alreadyPrinted = false
+
+      val cache0 = cache.withLogger(
+        RefreshLogger.create(
+          FileTypeRefreshDisplay.create(
+            keepOnScreen = true,
+            beforeOutput = {
+              if (!alreadyPrinted) {
+                System.err.println(msg)
+                alreadyPrinted = true
+              }
+            },
+            afterOutput = ()
+          )
+        )
+      )
+
+      val (firstCache, otherCaches) =
+        if (cache0.cachePolicies == CachePolicy.noEnvDefault) {
+
+          val first = cache0
+            .withLogger(CacheLogger.nop)
+            .withCachePolicies(Seq(CachePolicy.LocalOnlyIfValid))
+          val others = cache0
+            .withCachePolicies(cache0.cachePolicies.filter(_ != CachePolicy.LocalUpdateChanging))
+
+          (first, Seq(others))
+        } else
+          (cache0, Nil)
+
       val classifiers = classifiersOpt.getOrElse(Nil).toSet
-      // TODO Remove artifactTypes once https://github.com/coursier/coursier/pull/1074 can be used from here
-      val artifactTypes =
-        if (classifiers.isEmpty)
-          coursier.core.Resolution.defaultTypes
-        else {
-          classifiers.flatMap {
-            case Classifier.sources => Set(Type.source)
-            case Classifier.javadoc => Set(Type.doc)
-            case _ => Set.empty[Type]
-          }
-        }
       Fetch()
         .addDependencies(dependencies: _*)
-        .addRepositories(repositories: _*)
+        .withRepositories(repositories)
         .withClassifiers(classifiers)
-        .withArtifactTypes(artifactTypes)
         .withResolutionParams(
           ResolutionParams()
             .withForceVersion(forceVersion)
         )
-        .withCache(cache)
-        .either()
+        .withResolveCache(cache0)
+        .withArtifactsCache(firstCache)
+        .withOtherArtifactsCaches(otherCaches)
+        .eitherResult()
         .map(_._2)
     }
 
