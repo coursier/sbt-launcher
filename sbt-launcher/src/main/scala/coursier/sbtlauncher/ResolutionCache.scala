@@ -6,7 +6,7 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path}
 import java.security.MessageDigest
 
-import coursier.cache.{CacheLogger, CachePolicy, FileCache}
+import coursier.cache.{CacheDefaults, CacheLogger, CachePolicy, FileCache}
 import coursier.cache.loggers.{FileTypeRefreshDisplay, RefreshLogger}
 import coursier.core.{Artifact, Classifier, Organization}
 import coursier.params.ResolutionParams
@@ -62,7 +62,7 @@ final case class ResolutionCache(
       )
 
       val (firstCache, otherCaches) =
-        if (cache0.cachePolicies == CachePolicy.noEnvDefault) {
+        if (cache0.cachePolicies == CacheDefaults.noEnvCachePolicies) {
 
           val first = cache0
             .withLogger(CacheLogger.nop)
