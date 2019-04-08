@@ -6,7 +6,6 @@ import java.nio.file.{Files, StandardCopyOption}
 import java.util.concurrent.ConcurrentHashMap
 
 import coursier._
-import coursier.cache.LocalRepositories
 import coursier.core.Classifier
 import coursier.ivy.IvyRepository
 import coursier.sbtlauncher.{Repository, ResolutionCache}

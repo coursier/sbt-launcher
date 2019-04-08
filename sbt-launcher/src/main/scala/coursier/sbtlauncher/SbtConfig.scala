@@ -5,7 +5,7 @@ import java.nio.file.{Files, Path}
 
 import com.typesafe.config.{Config, ConfigFactory}
 import coursier.Dependency
-import coursier.util.Parse
+import coursier.parse.DependencyParser
 
 import scala.collection.JavaConverters._
 
@@ -90,25 +90,23 @@ object SbtConfig {
      else
         Nil
 
-    val (pluginErrors, pluginsModuleVersions) = Parse.moduleVersions(rawPlugins, scalaVersion)
-
-    if (pluginErrors.nonEmpty) {
-      ???
+    val pluginDependencies = DependencyParser.moduleVersions(rawPlugins, scalaVersion).either match {
+      case Left(errors) =>
+        ???
+      case Right(pluginsModuleVersions) =>
+        pluginsModuleVersions.map {
+          case (mod, ver) =>
+            Dependency(
+              mod.copy(
+                attributes = mod.attributes ++ Seq(
+                  "scalaVersion" -> scalaBinaryVersion,
+                  "sbtVersion" -> sbtBinaryVersion
+                )
+              ),
+              ver
+            )
+        }
     }
-
-    val pluginDependencies =
-      pluginsModuleVersions.map {
-        case (mod, ver) =>
-          Dependency(
-            mod.copy(
-              attributes = mod.attributes ++ Seq(
-                "scalaVersion" -> scalaBinaryVersion,
-                "sbtVersion" -> sbtBinaryVersion
-              )
-            ),
-            ver
-          )
-      }
 
     val rawDeps =
       if (config.hasPath("dependencies"))
@@ -116,17 +114,15 @@ object SbtConfig {
       else
         Nil
 
-    val (depsErrors, depsModuleVersions) = Parse.moduleVersions(rawDeps, scalaVersion)
-
-    if (depsErrors.nonEmpty) {
-      ???
+    val dependencies = DependencyParser.moduleVersions(rawDeps, scalaVersion).either match {
+      case Left(errors) =>
+        ???
+      case Right(depsModuleVersions) =>
+        depsModuleVersions.map {
+          case (mod, ver) =>
+            Dependency(mod, ver)
+        }
     }
-
-    val dependencies =
-      depsModuleVersions.map {
-        case (mod, ver) =>
-          Dependency(mod, ver)
-      }
 
     SbtConfig(
       org,

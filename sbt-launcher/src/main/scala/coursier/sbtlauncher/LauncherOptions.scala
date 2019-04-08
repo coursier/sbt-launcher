@@ -4,6 +4,7 @@ import java.util.Locale
 
 import caseapp.ExtraName
 import coursier.Dependency
+import coursier.parse.DependencyParser
 
 final case class LauncherOptions(
   @ExtraName("org")
@@ -29,21 +30,13 @@ final case class LauncherOptions(
       mainClass.getOrElse(""),
       Nil
     )
-  def extraDependencies(scalaVersion: String): Either[Seq[String], Seq[Dependency]] = {
-
-    val (extraParseErrors, extraModuleVersions) =
-      coursier.util.Parse.moduleVersions(extra, scalaVersion)
-
-    if (extraParseErrors.nonEmpty)
-      Left(extraParseErrors)
-    else
-      Right(
-        extraModuleVersions.map {
-          case (mod, ver) =>
-            Dependency(mod, ver)
-        }
-      )
-  }
+  def extraDependencies(scalaVersion: String): Either[Seq[String], Seq[Dependency]] =
+    DependencyParser.moduleVersions(extra, scalaVersion).either.right.map { l =>
+      l.map {
+        case (mod, ver) =>
+          Dependency(mod, ver)
+      }
+    }
 }
 
 object LauncherOptions {
