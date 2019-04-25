@@ -11,12 +11,23 @@ object ScriptedTests extends TestSuite {
   val tests = Tests {
 
     'check - {
-      val dir = Paths.get("tests/scripted-check")
-      run(
-        dir,
-        "1.2.8",
-        sbtCommands = Seq("check")
-      )
+      "sbt 1.2.8" - {
+        val dir = Paths.get("tests/scripted-check-1.2.8")
+        run(
+          dir,
+          "1.2.8",
+          sbtCommands = Seq("check")
+        )
+      }
+
+      "sbt 1.3.0-M2" - {
+        val dir = Paths.get("tests/scripted-check-1.3.0-M2")
+        run(
+          dir,
+          "1.3.0-M2",
+          sbtCommands = Seq("check")
+        )
+      }
     }
 
     'dynver - {

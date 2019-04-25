@@ -29,15 +29,12 @@ final case class SbtConfig(
       dependencies ++ other.dependencies // odd one out
     )
   lazy val sbtBinaryVersion: String =
-    if (sbtVersion.contains("-M") || sbtVersion.contains("-RC"))
-      sbtVersion
-    else
-      sbtVersion.split('.').take(2) match {
-        case Array("0", v) => s"0.$v"
-        case Array(major, _) => s"$major.0"
-        case _ =>
-          sys.error(s"Malformed sbt version '$sbtVersion'")
-      }
+    sbtVersion.split('.').take(2) match {
+      case Array("0", v) => s"0.$v"
+      case Array(major, _) => s"$major.0"
+      case _ =>
+        sys.error(s"Malformed sbt version '$sbtVersion'")
+    }
 }
 
 object SbtConfig {
