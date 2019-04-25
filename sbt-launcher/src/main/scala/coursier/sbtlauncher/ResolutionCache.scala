@@ -7,7 +7,7 @@ import java.nio.file.{Files, Path}
 import java.security.MessageDigest
 
 import coursier.cache.{CacheDefaults, CacheLogger, CachePolicy, FileCache}
-import coursier.cache.loggers.{FileTypeRefreshDisplay, RefreshLogger}
+import coursier.cache.loggers.{FallbackRefreshDisplay, FileTypeRefreshDisplay, RefreshLogger}
 import coursier.core.{Artifact, Classifier, Organization}
 import coursier.params.ResolutionParams
 import coursier.{Dependency, Fetch, Module, moduleNameString}
@@ -48,16 +48,19 @@ final case class ResolutionCache(
 
       val cache0 = cache.withLogger(
         RefreshLogger.create(
-          FileTypeRefreshDisplay.create(
-            keepOnScreen = true,
-            beforeOutput = {
-              if (!alreadyPrinted) {
-                System.err.println(msg)
-                alreadyPrinted = true
-              }
-            },
-            afterOutput = ()
-          )
+          if (RefreshLogger.defaultFallbackMode)
+            new FallbackRefreshDisplay()
+          else
+            FileTypeRefreshDisplay.create(
+              keepOnScreen = true,
+              beforeOutput = {
+                if (!alreadyPrinted) {
+                  System.err.println(msg)
+                  alreadyPrinted = true
+                }
+              },
+              afterOutput = ()
+            )
         )
       )
 
