@@ -1,6 +1,7 @@
 package coursier.sbtlauncher
 
 import java.io.{File, FileFilter}
+import java.lang.reflect.InvocationTargetException
 import java.nio.file.Paths
 import java.util.regex.Pattern
 
@@ -67,7 +68,9 @@ object LauncherApp extends CaseApp[LauncherOptions] {
     addSbtLauncherPlugin: Boolean,
     sbtCoursierVersionOpt: Option[String],
     sbtLmCoursierVersionOpt: Option[String],
-    userExtraDeps: Seq[Dependency]
+    userExtraDeps: Seq[Dependency],
+    shortCircuitSbtMain: Boolean,
+    useDistinctSbtTestInterfaceLoader: Boolean
   ) {
 
     def isSbt0x: Boolean =
@@ -212,7 +215,8 @@ object LauncherApp extends CaseApp[LauncherOptions] {
       // FIXME Add org & moduleName in this path
       new File(sbtComponents, s"components_scala${params.scalaVersion}${if (params.sbtVersion.isEmpty) "" else "_sbt" + params.sbtVersion}"),
       ivy2,
-      log
+      log,
+      useDistinctSbtTestInterfaceLoader = params.useDistinctSbtTestInterfaceLoader
     )
 
     log("Registering scala components")
@@ -226,7 +230,26 @@ object LauncherApp extends CaseApp[LauncherOptions] {
     val appProvider = launcher.app(appId, params.extraDeps: _*)
 
     log("Creating main")
-    val appMain = appProvider.newMain()
+    val appMain =
+      if (params.shortCircuitSbtMain) {
+        val loader = appProvider.loader()
+        val clazz = loader.loadClass("sbt.xMainImpl$")
+        val instance = clazz.getField("MODULE$").get(null)
+        val runMethod = clazz.getMethod("run", classOf[xsbti.AppConfiguration])
+        val f = {
+          appConfig: AppConfiguration =>
+            try {
+              runMethod.invoke(instance, appConfig).asInstanceOf[xsbti.MainResult]
+            } catch {
+              case e: InvocationTargetException =>
+                // ??? xsbti.Main does this
+                throw e.getCause
+            }
+        }
+        Left(f)
+      } else
+        Right(appProvider.newMain())
+
     val appConfig = AppConfiguration(args, projectDir, appProvider)
 
     log(s"Running sbt ${params.sbtVersion}")
@@ -235,7 +258,7 @@ object LauncherApp extends CaseApp[LauncherOptions] {
     val result =
       try {
         thread.setContextClassLoader(appProvider.loader())
-        Right(appMain.run(appConfig))
+        Right(appMain.fold(_(appConfig), _.run(appConfig)))
       } catch {
         case r: xsbti.FullReload =>
           Left(r)
@@ -355,6 +378,17 @@ object LauncherApp extends CaseApp[LauncherOptions] {
       options.classpathExtra.map(new File(_)).toArray
     )
 
+    lazy val isAtLeastSbt130M3 =
+      config.organization == SbtConfig.defaultOrganization &&
+        config.moduleName == SbtConfig.defaultModuleName &&
+        config.mainClass == SbtConfig.defaultMainClass &&
+        coursier.core.Version(config.version).compare(coursier.core.Version("1.3.0-M3")) >= 0
+
+    val shortCircuitSbtMain = options.shortCircuitSbtMain
+      .getOrElse(isAtLeastSbt130M3)
+    val useDistinctSbtTestInterfaceLoader = options.useDistinctSbtTestInterfaceLoader
+      .getOrElse(isAtLeastSbt130M3)
+
     doRun(
       appId,
       remainingArgs.all.toArray,
@@ -365,7 +399,9 @@ object LauncherApp extends CaseApp[LauncherOptions] {
         addSbtLauncherPlugin = sbtCoursierVersionOpt.exists(v => Version(v).compare(Version("1.1.0-M12")) < 0),
         sbtCoursierVersionOpt,
         sbtLmCoursierVersionOpt,
-        config.dependencies ++ extraDeps
+        config.dependencies ++ extraDeps,
+        shortCircuitSbtMain = shortCircuitSbtMain,
+        useDistinctSbtTestInterfaceLoader = useDistinctSbtTestInterfaceLoader
       )
     )
   }

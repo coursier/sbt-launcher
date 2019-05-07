@@ -28,6 +28,15 @@ object ScriptedTests extends TestSuite {
           sbtCommands = Seq("check")
         )
       }
+
+      "sbt 1.3.0-M3" - {
+        val dir = Paths.get("tests/scripted-check-1.3.0-M3")
+        run(
+          dir,
+          "1.3.0-M3",
+          sbtCommands = Seq("check")
+        )
+      }
     }
 
     'dynver - {

@@ -18,7 +18,8 @@ class Launcher(
   scalaJarCache: File,
   componentsCache: File,
   val ivyHome: File,
-  log: String => Unit
+  log: String => Unit,
+  useDistinctSbtTestInterfaceLoader: Boolean
 ) extends xsbti.Launcher {
 
   import Launcher._
@@ -70,7 +71,11 @@ class Launcher(
       throw new NoSuchElementException("scala-compiler JAR")
     }
 
-    val libraryLoader = new URLClassLoader(Array(libraryJar.toURI.toURL), topLoader)
+    val intermediateTopLoader =
+      sbtTestInterfaceFilesOpt.fold(topLoader) { sbtTestInterfaceFiles =>
+        new URLClassLoader(sbtTestInterfaceFiles.map(_.toURI.toURL).toArray, topLoader)
+      }
+    val libraryLoader = new URLClassLoader(Array(libraryJar.toURI.toURL), intermediateTopLoader)
     val loader = new URLClassLoader(otherJars.map(_.toURI.toURL).toArray, libraryLoader)
 
     ScalaProvider(
@@ -145,6 +150,12 @@ class Launcher(
   def app(id: xsbti.ApplicationID, version: String): xsbti.AppProvider =
     app(ApplicationID(id).copy(version = version))
 
+  private def sbtTestInterfaceFilesOpt =
+    if (useDistinctSbtTestInterfaceLoader)
+      Some(libFiles(("org.scala-sbt", "test-interface", "1.0")))
+    else
+      None
+
   def app(id: xsbti.ApplicationID, extra: Dependency*): xsbti.AppProvider = {
 
     val scalaOrg = defaultScalaOrg
@@ -153,7 +164,7 @@ class Launcher(
 
     val scalaProvider = getScalaProvider(scalaFiles0, scalaVersion)
 
-    val loader = new URLClassLoader(files.filterNot(scalaFiles.toSet).map(_.toURI.toURL).toArray, scalaProvider.loader())
+    val loader = new URLClassLoader(files.filterNot(scalaFiles.toSet).filterNot(sbtTestInterfaceFilesOpt.toSeq.flatten.toSet).map(_.toURI.toURL).toArray, scalaProvider.loader())
     val mainClass0 = loader.loadClass(id.mainClass).asSubclass(classOf[xsbti.AppMain])
 
     AppProvider(
@@ -164,6 +175,18 @@ class Launcher(
       () => mainClass0.newInstance(),
       files.toArray,
       componentProvider
+    )
+  }
+
+  private def libFiles(
+    id: (String, String, String)
+  ): Seq[File] = {
+    val (org, name, ver) = id
+    resolutionCache.artifactsOrExit(
+      Seq(
+        Dependency(Module(Organization(org), ModuleName(name)), ver)
+      ),
+      name = s"$org:$name:$ver"
     )
   }
 
