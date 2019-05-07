@@ -19,7 +19,8 @@ final case class LauncherOptions(
   extra: List[String] = Nil,
   addCoursier: Boolean = LauncherOptions.defaultAddCoursier,
   coursierPlugin: Option[String] = None,
-  shortCircuitSbtMain: Option[Boolean] = None
+  shortCircuitSbtMain: Option[Boolean] = None,
+  useDistinctSbtTestInterfaceLoader: Option[Boolean] = None
 ) {
   def sbtConfig: SbtConfig =
     SbtConfig(

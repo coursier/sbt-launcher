@@ -69,7 +69,8 @@ object LauncherApp extends CaseApp[LauncherOptions] {
     sbtCoursierVersionOpt: Option[String],
     sbtLmCoursierVersionOpt: Option[String],
     userExtraDeps: Seq[Dependency],
-    shortCircuitSbtMain: Boolean
+    shortCircuitSbtMain: Boolean,
+    useDistinctSbtTestInterfaceLoader: Boolean
   ) {
 
     def isSbt0x: Boolean =
@@ -214,7 +215,8 @@ object LauncherApp extends CaseApp[LauncherOptions] {
       // FIXME Add org & moduleName in this path
       new File(sbtComponents, s"components_scala${params.scalaVersion}${if (params.sbtVersion.isEmpty) "" else "_sbt" + params.sbtVersion}"),
       ivy2,
-      log
+      log,
+      useDistinctSbtTestInterfaceLoader = params.useDistinctSbtTestInterfaceLoader
     )
 
     log("Registering scala components")
@@ -376,12 +378,16 @@ object LauncherApp extends CaseApp[LauncherOptions] {
       options.classpathExtra.map(new File(_)).toArray
     )
 
-    val shortCircuitSbtMain = options.shortCircuitSbtMain.getOrElse {
+    lazy val isAtLeastSbt130M3 =
       config.organization == SbtConfig.defaultOrganization &&
         config.moduleName == SbtConfig.defaultModuleName &&
-        config.mainClass == SbtConfig.defaultMainClass
+        config.mainClass == SbtConfig.defaultMainClass &&
         coursier.core.Version(config.version).compare(coursier.core.Version("1.3.0-M3")) >= 0
-    }
+
+    val shortCircuitSbtMain = options.shortCircuitSbtMain
+      .getOrElse(isAtLeastSbt130M3)
+    val useDistinctSbtTestInterfaceLoader = options.useDistinctSbtTestInterfaceLoader
+      .getOrElse(isAtLeastSbt130M3)
 
     doRun(
       appId,
@@ -394,7 +400,8 @@ object LauncherApp extends CaseApp[LauncherOptions] {
         sbtCoursierVersionOpt,
         sbtLmCoursierVersionOpt,
         config.dependencies ++ extraDeps,
-        shortCircuitSbtMain = shortCircuitSbtMain
+        shortCircuitSbtMain = shortCircuitSbtMain,
+        useDistinctSbtTestInterfaceLoader = useDistinctSbtTestInterfaceLoader
       )
     )
   }
