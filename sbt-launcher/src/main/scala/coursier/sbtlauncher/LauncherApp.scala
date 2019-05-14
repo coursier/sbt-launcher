@@ -193,12 +193,12 @@ object LauncherApp extends CaseApp[LauncherOptions] {
     }
 
   val ivy2 =
-    sys.props.get("coursier.sbt-launcher.dirs.ivy2") match {
-      case None =>
-        new File(targetDir, "ivy2")
-      case Some(p) =>
-        new File(p)
-    }
+    sys.props.get("coursier.sbt.ivy.home")
+      .orElse(sys.props.get("sbt.ivy.home"))
+      .map(new File(_))
+      .getOrElse {
+        new File(new File(sys.props("user.home")), ".ivy2")
+      }
 
   @tailrec
   private def doRun(
