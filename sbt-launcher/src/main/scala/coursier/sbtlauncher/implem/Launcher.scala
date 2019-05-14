@@ -116,6 +116,18 @@ class Launcher(
 
   def appRepositories: Array[xsbti.Repository] =
     repositories.map {
+      case ("local", i: IvyRepository) =>
+        // special casing that one to keep the ivy.home property
+        val pat = "${ivy.home}/local/" + coursier.ivy.Pattern.default.string
+        Repository.Ivy(
+          "local",
+          new URL("file:/"),
+          pat,
+          pat,
+          mavenCompatible = false,
+          skipConsistencyCheck = true, // ???
+          descriptorOptional = true // ???
+        )
       case (id, m: MavenRepository) =>
         Repository.Maven(id, new URL(m.root))
       case (id, i: IvyRepository) =>

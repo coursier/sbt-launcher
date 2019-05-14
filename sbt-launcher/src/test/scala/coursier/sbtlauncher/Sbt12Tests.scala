@@ -52,6 +52,15 @@ object Sbt12Tests extends TestSuite {
           )
         }
 
+        "ivy.home property" - {
+          val dir = Paths.get("tests/ivy-local-check")
+          run(
+            dir,
+            "1.2.8",
+            sbtCommands = Seq("check")
+          )
+        }
+
         "sbt-lm-coursier" - {
           val dir = Paths.get("tests/sbt-lm-coursier-proj")
           run(
