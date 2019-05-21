@@ -16,4 +16,6 @@ object Repository {
     descriptorOptional: Boolean
   ) extends xsbti.IvyRepository
 
+  final case class Predefined(id: xsbti.Predefined) extends xsbti.PredefinedRepository
+
 }

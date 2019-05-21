@@ -1,6 +1,6 @@
 package coursier.sbtlauncher
 
-import java.nio.file.Paths
+import java.nio.file.{Files, Paths}
 
 import utest._
 
@@ -54,11 +54,19 @@ object Sbt12Tests extends TestSuite {
 
         "ivy.home property" - {
           val dir = Paths.get("tests/ivy-local-check")
+          val ivyHome = dir.resolve("ivy-home")
+
+          TestHelpers.deleteRecursively(ivyHome)
+
           run(
             dir,
             "1.2.8",
-            sbtCommands = Seq("check")
+            sbtCommands = Seq("check", "a/publishLocal"),
+            ivyHomeOpt = Some(ivyHome)
           )
+
+          val expected = ivyHome.resolve("local/foo/a_2.12/0.1.0-SNAPSHOT/ivys/ivy.xml")
+          assert(Files.isRegularFile(expected))
         }
 
         "sbt-lm-coursier" - {

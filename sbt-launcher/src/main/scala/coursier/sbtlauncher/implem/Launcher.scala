@@ -116,18 +116,11 @@ class Launcher(
 
   def appRepositories: Array[xsbti.Repository] =
     repositories.map {
-      case ("local", i: IvyRepository) =>
-        // special casing that one to keep the ivy.home property
-        val pat = "${ivy.home}/local/" + coursier.ivy.Pattern.default.string
-        Repository.Ivy(
-          "local",
-          new URL("file:/"),
-          pat,
-          pat,
-          mavenCompatible = false,
-          skipConsistencyCheck = true, // ???
-          descriptorOptional = true // ???
-        )
+      case ("local", _: IvyRepository) =>
+        // xsbti.IvyRepository.url being a URL rather than a string messes with the path when relying on xsbti.IvyRepository
+        // (file:/ and file:/// prepend the current drive, like C:\, and file: and file:// prepend the current
+        // directory, which makes things file:${ivy.home}/… start with the wrong path…)
+        Repository.Predefined(xsbti.Predefined.Local)
       case (id, m: MavenRepository) =>
         Repository.Maven(id, new URL(m.root))
       case (id, i: IvyRepository) =>
