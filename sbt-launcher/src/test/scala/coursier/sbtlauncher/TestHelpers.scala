@@ -10,9 +10,12 @@ import scala.collection.JavaConverters._
 
 object TestHelpers {
 
-  val launcher = {
+  lazy val isWindows = sys.props("os.name").toLowerCase(java.util.Locale.ROOT).contains("windows")
+
+  lazy val launcher = {
     val p = Paths.get("target/test-csbt")
-    val b = new ProcessBuilder("/bin/bash", "-c", "./scripts/generate-csbt.sh -r ivy2Local -f")
+    val bashPath = if (isWindows) "bash" else "/bin/bash"
+    val b = new ProcessBuilder(bashPath, "-c", "./scripts/generate-csbt.sh -r ivy2Local -f")
       .redirectOutput(Redirect.INHERIT)
       .redirectError(Redirect.INHERIT)
       .redirectInput(Redirect.PIPE)
@@ -25,15 +28,24 @@ object TestHelpers {
     val retCode = proc.waitFor()
     assert(retCode == 0)
     Console.err.println(s"Generated launcher $p")
-    p
+    if (isWindows) p.getParent.resolve(s"${p.getFileName}.bat") else p
   }
 
   private def deleteRecursively(p: Path): Unit = {
-    if (Files.isDirectory(p))
-      Files.list(p)
-        .iterator()
-        .asScala
-        .foreach(deleteRecursively)
+    if (Files.isDirectory(p)) {
+      // Circumventing DirectoryNotEmptyException here, see https://stackoverflow.com/a/33014128/3714539
+      var stream: java.util.stream.Stream[Path] = null
+      try {
+        stream = Files.list(p)
+        stream
+          .iterator()
+          .asScala
+          .foreach(deleteRecursively)
+      } finally {
+        if (stream != null)
+          stream.close()
+      }
+    }
     Files.deleteIfExists(p)
   }
 
@@ -87,12 +99,29 @@ object TestHelpers {
       )
     }
 
-    val cmd = Seq(
-      launcher.toAbsolutePath.toString,
-      "-J-Dsbt.global.base=" + sbtDir.toAbsolutePath,
-      "-J-Dsbt.ivy.home=" + ivyHome.toAbsolutePath,
-      "-J-Dcoursier.sbt-launcher.parse-args=true"
-    ) ++ extraJavaOpts.map("-J" + _) ++ extraArgs ++ Seq("--") ++ sbtCommands
+    val (cmd, env) =
+      if (isWindows) {
+        val cmd = Seq(
+          launcher.toAbsolutePath.toString
+        ) ++ extraArgs ++ Seq("--") ++ sbtCommands
+
+        val javaOpts = Seq(
+          s"-Dsbt.global.base=${sbtDir.toAbsolutePath}",
+          s"-Dsbt.ivy.home=${ivyHome.toAbsolutePath}",
+          "-Dcoursier.sbt-launcher.parse-args=true"
+        ) ++ extraJavaOpts
+
+        (cmd, Seq("JAVA_OPTS" -> javaOpts.mkString(" ")))
+      } else {
+        val cmd = Seq(
+          launcher.toAbsolutePath.toString,
+          "-J-Dsbt.global.base=" + sbtDir.toAbsolutePath,
+          "-J-Dsbt.ivy.home=" + ivyHome.toAbsolutePath,
+          "-J-Dcoursier.sbt-launcher.parse-args=true"
+        ) ++ extraJavaOpts.map("-J" + _) ++ extraArgs ++ Seq("--") ++ sbtCommands
+
+        (cmd, Nil)
+      }
     Console.err.println("Running")
     Console.err.println(s"  ${cmd.mkString(" ")}")
     Console.err.println(s"in directory $dir")
@@ -101,6 +130,9 @@ object TestHelpers {
       .redirectOutput(Redirect.INHERIT)
       .redirectError(Redirect.INHERIT)
       .redirectInput(Redirect.PIPE)
+    val envMap = b.environment()
+    for ((k, v) <- env)
+      envMap.put(k, v)
     try {
       val p = b.start()
       p.getOutputStream.close()
