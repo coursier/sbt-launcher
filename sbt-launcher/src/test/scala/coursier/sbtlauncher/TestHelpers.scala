@@ -107,7 +107,7 @@ object TestHelpers {
 
         val javaOpts = Seq(
           s"-Dsbt.global.base=${sbtDir.toAbsolutePath}",
-          s"-Dsbt.ivy.home=${ivyHome.toAbsolutePath}",
+          s"-Dsbt.ivy.home=${ivyHome.toAbsolutePath.toUri.getPath}",
           "-Dcoursier.sbt-launcher.parse-args=true"
         ) ++ extraJavaOpts
 
