@@ -31,7 +31,7 @@ object TestHelpers {
     if (isWindows) p.getParent.resolve(s"${p.getFileName}.bat") else p
   }
 
-  private def deleteRecursively(p: Path): Unit = {
+  def deleteRecursively(p: Path): Unit = {
     if (Files.isDirectory(p)) {
       // Circumventing DirectoryNotEmptyException here, see https://stackoverflow.com/a/33014128/3714539
       var stream: java.util.stream.Stream[Path] = null
@@ -55,7 +55,8 @@ object TestHelpers {
     sbtCommands: Seq[String] = Seq("update", "updateClassifiers", "test:compile", "test"),
     extraJavaOpts: Seq[String] = Nil,
     forceSbtVersion: Boolean = false,
-    globalPlugins: Seq[String] = Nil
+    globalPlugins: Seq[String] = Nil,
+    ivyHomeOpt: Option[Path] = None
   ): Unit = {
 
     val propFile = dir.resolve("project/build.properties")
@@ -80,7 +81,7 @@ object TestHelpers {
     }
 
     val sbtDir = dir.resolve("sbt-global-base")
-    val ivyHome = dir.resolve("ivy-home")
+    val ivyHome = ivyHomeOpt.getOrElse(dir.resolve("ivy-home"))
     deleteRecursively(sbtDir)
     deleteRecursively(ivyHome)
 
@@ -140,7 +141,8 @@ object TestHelpers {
       assert(retCode == 0)
     } finally {
       deleteRecursively(sbtDir)
-      deleteRecursively(ivyHome)
+      if (ivyHomeOpt.isEmpty)
+        deleteRecursively(ivyHome)
     }
   }
 
