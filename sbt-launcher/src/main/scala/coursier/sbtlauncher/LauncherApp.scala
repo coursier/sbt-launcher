@@ -305,7 +305,15 @@ object LauncherApp extends CaseApp[LauncherOptions] {
       sys.props("coursier.sbt-launcher.version") = Properties.version
 
     if (!sys.props.contains("coursier.sbt-launcher.jar"))
-      sys.props("coursier.sbt-launcher.jar") = sys.props("coursier.mainJar")
+      sys.props.get("coursier.mainJar") match {
+        case Some(path) =>
+          sys.props("coursier.sbt-launcher.jar") = path
+        case None =>
+          System.err.println(
+            "Warning: seems the sbt launcher isn't run via a single dedicated JAR. " +
+              "It won't run scripted tests fine as a consequence."
+          )
+      }
 
     val extraDeps = options.extraDependencies(config.scalaVersion) match {
       case Left(errors) =>
