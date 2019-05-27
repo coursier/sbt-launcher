@@ -52,7 +52,7 @@ lazy val `sbt-launcher` = project
     libraryDependencies ++= Seq(
       "io.get-coursier" %% "coursier" % "1.1.0-M14-4",
       "com.github.alexarchambault" %% "case-app" % "2.0.0-M8",
-      "org.scala-sbt" % "launcher-interface" % "1.0.4",
+      "org.scala-sbt" % "launcher-interface" % "1.1.0",
       "com.typesafe" % "config" % "1.3.4",
       "com.lihaoyi" %% "utest" % "0.6.7" % "test"
     ),
