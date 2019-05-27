@@ -63,7 +63,7 @@ object TestHelpers {
 
     val extraArgs =
       if (forceSbtVersion)
-        Seq("--sbt-version", sbtVersion)
+        Seq("--version", sbtVersion)
       else
         Nil
 

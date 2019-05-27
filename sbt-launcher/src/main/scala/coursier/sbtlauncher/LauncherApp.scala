@@ -293,10 +293,10 @@ object LauncherApp extends CaseApp[LauncherOptions] {
     if (!sys.props.contains("jna.nosys"))
       sys.props("jna.nosys") = "true"
 
-    val config = options.sbtConfig.orElse {
-      SbtConfig.fromProject(Paths.get(sys.props("user.dir")))
-        .getOrElse(SbtConfig.fromConfig(ConfigFactory.systemProperties()))
-    }
+    val config = options.sbtConfig
+      .orElse(SbtConfig.fromProject(Paths.get(sys.props("user.dir"))))
+      .orElse(SbtConfig.fromConfig(ConfigFactory.systemProperties()))
+      .fillMissing
 
     if (!sys.props.contains("sbt.global.base"))
       sys.props("sbt.global.base") = defaultBase(config.sbtBinaryVersion)
@@ -336,7 +336,7 @@ object LauncherApp extends CaseApp[LauncherOptions] {
         None
 
     val foundSbtLmCoursierVersionOpt =
-      if (!config.sbtVersion.startsWith("0.") && options.addCoursier) {
+      if (!config.version.startsWith("0.") && options.addCoursier) {
 
         val fromProject = sbtCoursierVersionFromPluginsSbt(new File(sys.props("user.dir") + "/project"), "sbt-lm-coursier")
         val global = sbtCoursierVersionFromPluginsSbt(new File(sys.props("sbt.global.base") + "/plugins"), "sbt-lm-coursier")
@@ -350,21 +350,38 @@ object LauncherApp extends CaseApp[LauncherOptions] {
 
     val (sbtCoursierVersionOpt, sbtLmCoursierVersionOpt) =
       if (options.addCoursier)
-        (foundSbtCoursierVersionOpt, foundSbtLmCoursierVersionOpt) match {
-          case (Some(v), _) =>
-            (Some(v), None)
-          case (None, Some(v)) =>
-            (None, Some(v))
-          case (None, None) =>
-            if (config.sbtVersion.startsWith("0.13."))
-              (Some("1.1.0-M7"), None) // last sbt 0.13 compatible version
+        options.pluginVersion match {
+          case None =>
+            (foundSbtCoursierVersionOpt, foundSbtLmCoursierVersionOpt) match {
+              case (Some(v), _) =>
+                (Some(v), None)
+              case (None, Some(v)) =>
+                (None, Some(v))
+              case (None, None) =>
+                if (config.version.startsWith("0.13."))
+                  (Some("1.1.0-M7"), None) // last sbt 0.13 compatible version
+                else
+                // now adding sbt-lm-coursier by default, that adds a coursier-based DependencyResolution in particular
+                  options.coursierPlugin.getOrElse("sbt-lm-coursier") match {
+                    case "sbt-coursier" =>
+                      (Some(Properties.sbtCoursierDefaultVersion), None)
+                    case "sbt-lm-coursier" =>
+                      (None, Some(Properties.sbtCoursierDefaultVersion))
+                    case other =>
+                      System.err.println(s"Unrecognized coursier plugin: $other")
+                      sys.exit(1)
+                  }
+            }
+          case Some(v) =>
+            if (config.version.startsWith("0.13."))
+              (Some(v), None)
             else
               // now adding sbt-lm-coursier by default, that adds a coursier-based DependencyResolution in particular
               options.coursierPlugin.getOrElse("sbt-lm-coursier") match {
                 case "sbt-coursier" =>
-                  (Some(Properties.sbtCoursierDefaultVersion), None)
+                  (Some(v), None)
                 case "sbt-lm-coursier" =>
-                  (None, Some(Properties.sbtCoursierDefaultVersion))
+                  (None, Some(v))
                 case other =>
                   System.err.println(s"Unrecognized coursier plugin: $other")
                   sys.exit(1)
@@ -402,12 +419,12 @@ object LauncherApp extends CaseApp[LauncherOptions] {
       remainingArgs.all.toArray,
       RunParams(
         config.scalaVersion,
-        config.sbtVersion,
+        config.version,
         config.sbtBinaryVersion,
         addSbtLauncherPlugin = sbtCoursierVersionOpt.exists(v => Version(v).compare(Version("1.1.0-M12")) < 0),
         sbtCoursierVersionOpt,
         sbtLmCoursierVersionOpt,
-        config.dependencies ++ extraDeps,
+        config.parsedDependencies ++ extraDeps,
         shortCircuitSbtMain = shortCircuitSbtMain,
         useDistinctSbtTestInterfaceLoader = useDistinctSbtTestInterfaceLoader
       )

@@ -11,9 +11,8 @@ object MainApp {
   def main(args: Array[String]): Unit = {
 
     if (sys.props.get("coursier.sbt-launcher.parse-args").contains("extras")) {
-      val (launcherArgs, otherArgs) = args.partition(_.startsWith("-C"))
-      val launcherArgs0 = launcherArgs.map(_.stripPrefix("-C"))
 
+      val launcherArgs = new ListBuffer[String]
       val sbtArgs = new ListBuffer[String]
       val residualArgs = new ListBuffer[String]
 
@@ -22,10 +21,13 @@ object MainApp {
       // missing:
       // -jvm-debug
       // -batch
+      // …
 
       def processArgs(it: Iterator[String]): Unit =
         while (it.hasNext)
           it.next() match {
+            case arg if arg.startsWith("-C") =>
+              launcherArgs += arg.stripPrefix("-C")
             case "-d" =>
               sbtArgs += "--debug"
             case "-w" =>
@@ -58,15 +60,17 @@ object MainApp {
               // will this really get picked with our launcher?
               sys.props("sbt.main.class") = "sbt.ScriptMain"
               residualArgs.prepend(it.next())
+            case "-sbt-version" =>
+              launcherArgs += s"--version=${it.next()}"
             case "-sbt-opts" =>
               sbtOptFile = Some(new File(it.next()))
             case other =>
               residualArgs += other
           }
 
-      processArgs(otherArgs.iterator)
+      processArgs(args.iterator)
 
-      LauncherApp.main(launcherArgs0 ++ Seq("--") ++ sbtArgs ++ residualArgs)
+      LauncherApp.main((launcherArgs ++ Seq("--") ++ sbtArgs ++ residualArgs).toArray)
     } else {
       val fromEnv = sys.env.get("COURSIER_SBT_LAUNCHER_PARSE_ARGS")
         .map(s => s == "1" || s.toLowerCase(Locale.ROOT) == "true")
