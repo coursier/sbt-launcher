@@ -90,7 +90,7 @@ final case class ResolutionCache(
         .withArtifactsCache(firstCache)
         .withOtherArtifactsCaches(otherCaches)
         .eitherResult()
-        .map(_._2)
+        .map(_.artifacts)
     }
 
 
