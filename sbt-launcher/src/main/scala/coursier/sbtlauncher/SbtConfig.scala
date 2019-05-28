@@ -13,81 +13,80 @@ final case class SbtConfig(
   organization: String,
   moduleName: String,
   version: String,
-  sbtVersion: String,
   scalaVersion: String,
   mainClass: String,
-  dependencies: Seq[Dependency]
+  dependencies: Seq[String],
+  plugins: Seq[String]
 ) {
+  def orElse(otherOpt: Option[SbtConfig]): SbtConfig =
+    otherOpt.fold(this)(orElse)
   def orElse(other: SbtConfig): SbtConfig =
     SbtConfig(
       if (organization.isEmpty) other.organization else organization,
       if (moduleName.isEmpty) other.moduleName else moduleName,
       if (version.isEmpty) other.version else version,
-      if (sbtVersion.isEmpty) other.sbtVersion else sbtVersion,
       if (scalaVersion.isEmpty) other.scalaVersion else scalaVersion,
       if (mainClass.isEmpty) other.mainClass else mainClass,
-      dependencies ++ other.dependencies // odd one out
+      dependencies ++ other.dependencies, // odd one out
+      plugins ++ other.plugins
     )
   lazy val sbtBinaryVersion: String =
-    sbtVersion.split('.').take(2) match {
+    version.split('.').take(2) match {
       case Array("0", v) => s"0.$v"
       case Array(major, _) => s"$major.0"
       case _ =>
-        sys.error(s"Malformed sbt version '$sbtVersion'")
+        sys.error(s"Malformed sbt version '$version'")
     }
-}
 
-object SbtConfig {
+  def fillMissing: SbtConfig = {
 
-  def defaultOrganization = "org.scala-sbt"
-  def defaultModuleName = "sbt"
-  def defaultMainClass = "sbt.xMain"
-
-  def fromConfig(config: Config): SbtConfig = {
-
-    val version = config.getString("sbt.version")
-
-    val scalaVersion =
-      if (config.hasPath("scala.version"))
-        config.getString("scala.version")
-      else if (version.startsWith("0.13."))
-        "2.10.7"
-      else if (version.startsWith("1.")) {
-        // might be better to adjust that depending on which version the sbt version depends on…
-        val v = scala.util.Properties.versionNumberString
-        assert(v.startsWith("2.12."))
-        v
+    val scalaVersion0 =
+      if (scalaVersion.isEmpty) {
+        if (version.startsWith("0.13."))
+          "2.10.7"
+        else if (version.startsWith("1.")) {
+          // might be better to adjust that depending on which version the sbt version depends on…
+          val v = scala.util.Properties.versionNumberString
+          assert(v.startsWith("2.12."))
+          v
+        } else
+          throw new Exception(s"Don't know what Scala version should be used for sbt version '$version'")
       } else
-        throw new Exception(s"Don't know what Scala version should be used for sbt version '$version'")
+        scalaVersion
 
     val org =
-      if (config.hasPath("sbt.organization"))
-        config.getString("sbt.organization")
+      if (organization.isEmpty)
+        SbtConfig.defaultOrganization
       else
-        defaultOrganization
+        organization
 
     val name =
-      if (config.hasPath("sbt.module-name"))
-        config.getString("sbt.module-name")
+      if (moduleName.isEmpty)
+        SbtConfig.defaultModuleName
       else
-        defaultModuleName
+        moduleName
 
-    val mainClass =
-      if (config.hasPath("sbt.main-class"))
-        config.getString("sbt.main-class")
+    val mainClass0 =
+      if (mainClass.isEmpty)
+        SbtConfig.defaultMainClass
       else
-        defaultMainClass
+        mainClass
+
+    copy(
+      organization = org,
+      moduleName = name,
+      scalaVersion = scalaVersion0,
+      mainClass = mainClass0
+    )
+  }
+
+
+  def parsedDependencies(): Seq[Dependency] = {
 
     val scalaBinaryVersion = scalaVersion.split('.').take(2).mkString(".")
     val sbtBinaryVersion = version.split('.').take(2).mkString(".")
 
-    val rawPlugins =
-      if (config.hasPath("plugins"))
-        config.getStringList("plugins").asScala
-     else
-        Nil
-
-    val pluginDependencies = DependencyParser.moduleVersions(rawPlugins, scalaVersion).either match {
+    val pluginDependencies = DependencyParser.moduleVersions(plugins, scalaVersion).either match {
       case Left(errors) =>
         ???
       case Right(pluginsModuleVersions) =>
@@ -105,13 +104,7 @@ object SbtConfig {
         }
     }
 
-    val rawDeps =
-      if (config.hasPath("dependencies"))
-        config.getStringList("dependencies").asScala
-      else
-        Nil
-
-    val dependencies = DependencyParser.moduleVersions(rawDeps, scalaVersion).either match {
+    val dependencies0 = DependencyParser.moduleVersions(dependencies, scalaVersion).either match {
       case Left(errors) =>
         ???
       case Right(depsModuleVersions) =>
@@ -121,14 +114,68 @@ object SbtConfig {
         }
     }
 
+    pluginDependencies ++ dependencies0
+  }
+}
+
+object SbtConfig {
+
+  def defaultOrganization = "org.scala-sbt"
+  def defaultModuleName = "sbt"
+  def defaultMainClass = "sbt.xMain"
+
+  def fromConfig(config: Config): SbtConfig = {
+
+    val version =
+      if (config.hasPath("sbt.version"))
+        config.getString("sbt.version")
+      else
+        ""
+
+    val scalaVersion =
+      if (config.hasPath("scala.version"))
+        config.getString("scala.version")
+      else
+        ""
+
+    val org =
+      if (config.hasPath("sbt.organization"))
+        config.getString("sbt.organization")
+      else
+        ""
+
+    val name =
+      if (config.hasPath("sbt.module-name"))
+        config.getString("sbt.module-name")
+      else
+        ""
+
+    val mainClass =
+      if (config.hasPath("sbt.main-class"))
+        config.getString("sbt.main-class")
+      else
+        ""
+
+    val pluginDependencies =
+      if (config.hasPath("plugins"))
+        config.getStringList("plugins").asScala
+     else
+        Nil
+
+    val dependencies =
+      if (config.hasPath("dependencies"))
+        config.getStringList("dependencies").asScala
+      else
+        Nil
+
     SbtConfig(
       org,
       name,
       version,
-      version,
       scalaVersion,
       mainClass,
-      pluginDependencies ++ dependencies
+      dependencies,
+      pluginDependencies
     )
   }
 

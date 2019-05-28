@@ -10,9 +10,9 @@ final case class LauncherOptions(
   @ExtraName("org")
     organization: Option[String] = None,
   name: Option[String] = None,
-  version: Option[String] = None,
   scalaVersion: Option[String] = None,
-  sbtVersion: Option[String] = None,
+  version: Option[String] = None,
+  pluginVersion: Option[String] = None,
   mainClass: Option[String] = None,
   mainComponents: List[String] = Nil,
   classpathExtra: List[String] = Nil,
@@ -27,9 +27,10 @@ final case class LauncherOptions(
       organization.getOrElse(""),
       name.getOrElse(""),
       version.getOrElse(""),
-      sbtVersion.getOrElse(""),
       scalaVersion.getOrElse(""),
       mainClass.getOrElse(""),
+      // accept those as args?
+      Nil,
       Nil
     )
   def extraDependencies(scalaVersion: String): Either[Seq[String], Seq[Dependency]] =
