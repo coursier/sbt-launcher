@@ -13,6 +13,8 @@ final case class LauncherOptions(
   scalaVersion: Option[String] = None,
   version: Option[String] = None,
   pluginVersion: Option[String] = None,
+  launcherPluginVersion: Option[String] = None,
+  launcherScriptedPluginVersion: Option[String] = None,
   mainClass: Option[String] = None,
   mainComponents: List[String] = Nil,
   classpathExtra: List[String] = Nil,

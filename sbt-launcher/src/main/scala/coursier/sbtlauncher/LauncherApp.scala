@@ -65,7 +65,8 @@ object LauncherApp extends CaseApp[LauncherOptions] {
     scalaVersion: String,
     sbtVersion: String,
     sbtBinaryVersion: String,
-    addSbtLauncherPlugin: Boolean,
+    sbtLauncherPluginVersionOpt: Option[String],
+    sbtLauncherScriptedPluginVersionOpt: Option[String],
     sbtCoursierVersionOpt: Option[String],
     sbtLmCoursierVersionOpt: Option[String],
     userExtraDeps: Seq[Dependency],
@@ -77,38 +78,37 @@ object LauncherApp extends CaseApp[LauncherOptions] {
       sbtVersion.startsWith("0.")
 
     private def sbtLauncherPluginDepOpt =
-      if (addSbtLauncherPlugin)
-        Some(
-          Dependency(
-            Module(
-              org"io.get-coursier", name"sbt-launcher-plugin",
-              attributes = Map(
-                "scalaVersion" -> scalaVersion.split('.').take(2).mkString("."),
-                "sbtVersion" -> sbtBinaryVersion
-              )
-            ),
-            Properties.version
-          )
+      sbtLauncherPluginVersionOpt.map { version =>
+        Dependency(
+          Module(
+            org"io.get-coursier", name"sbt-launcher-plugin",
+            attributes = Map(
+              "scalaVersion" -> scalaVersion.split('.').take(2).mkString("."),
+              "sbtVersion" -> sbtBinaryVersion
+            )
+          ),
+          version
         )
-      else
-        None
+      }
 
     private def sbtLauncherScriptedPluginDepOpt =
-      if (sbtBinaryVersion.startsWith("0.") || sbtVersion.startsWith("1.0.") || sbtVersion.startsWith("1.1."))
-        None
-      else
-        Some(
-          Dependency(
-            Module(
-              org"io.get-coursier", name"sbt-launcher-scripted-plugin",
-              attributes = Map(
-                "scalaVersion" -> scalaVersion.split('.').take(2).mkString("."),
-                "sbtVersion" -> sbtBinaryVersion
-              )
-            ),
-            Properties.version
+      sbtLauncherScriptedPluginVersionOpt.flatMap { version =>
+        if (sbtBinaryVersion.startsWith("0.") || sbtVersion.startsWith("1.0.") || sbtVersion.startsWith("1.1."))
+          None
+        else
+          Some(
+            Dependency(
+              Module(
+                org"io.get-coursier", name"sbt-launcher-scripted-plugin",
+                attributes = Map(
+                  "scalaVersion" -> scalaVersion.split('.').take(2).mkString("."),
+                  "sbtVersion" -> sbtBinaryVersion
+                )
+              ),
+              version
+            )
           )
-        )
+      }
 
     private def coursierDepOpt: Option[Dependency] =
       sbtCoursierVersionOpt.flatMap { sbtCoursierVersion =>
@@ -414,6 +414,9 @@ object LauncherApp extends CaseApp[LauncherOptions] {
     val useDistinctSbtTestInterfaceLoader = options.useDistinctSbtTestInterfaceLoader
       .getOrElse(isAtLeastSbt130M3)
 
+    val launcherPluginVersion = options.launcherPluginVersion.getOrElse(Properties.version)
+    val launcherScriptedPluginVersion = options.launcherScriptedPluginVersion.getOrElse(launcherPluginVersion)
+
     doRun(
       appId,
       remainingArgs.all.toArray,
@@ -421,7 +424,8 @@ object LauncherApp extends CaseApp[LauncherOptions] {
         config.scalaVersion,
         config.version,
         config.sbtBinaryVersion,
-        addSbtLauncherPlugin = sbtCoursierVersionOpt.exists(v => Version(v).compare(Version("1.1.0-M12")) < 0),
+        sbtLauncherPluginVersionOpt = if (sbtCoursierVersionOpt.exists(v => Version(v).compare(Version("1.1.0-M12")) < 0)) Some(launcherPluginVersion) else None,
+        sbtLauncherScriptedPluginVersionOpt = Some(launcherScriptedPluginVersion),
         sbtCoursierVersionOpt,
         sbtLmCoursierVersionOpt,
         config.parsedDependencies ++ extraDeps,
