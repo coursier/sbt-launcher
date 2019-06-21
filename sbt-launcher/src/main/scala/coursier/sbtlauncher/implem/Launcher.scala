@@ -301,18 +301,32 @@ object Launcher {
   private def defaultScalaOrg = org"org.scala-lang"
   private def repositoryIdPrefix = "coursier-launcher-"
 
-  private val repositories = Seq(
-    // FIXME Use defaults from coursier.Resolve.defaultRepositories here?
-    // mmh, ID "local" seems to be required for publishLocal to be fine if we're launching sbt
-    "local" -> LocalRepositories.ivy2Local,
-    s"${repositoryIdPrefix}central" -> MavenRepository("https://repo1.maven.org/maven2", sbtAttrStub = true),
-    s"${repositoryIdPrefix}typesafe-ivy-releases" -> IvyRepository.parse(
-      "https://repo.typesafe.com/typesafe/ivy-releases/[organization]/[module]/[revision]/[type]s/[artifact](-[classifier]).[ext]"
-    ).left.map(sys.error).merge,
-    s"${repositoryIdPrefix}sbt-plugin-releases" -> IvyRepository.parse(
-      "https://repo.scala-sbt.org/scalasbt/sbt-plugin-releases/[organization]/[module](/scala_[scalaVersion])(/sbt_[sbtVersion])/[revision]/[type]s/[artifact](-[classifier]).[ext]"
-    ).left.map(sys.error).merge
-  )
+  private val repositories = {
+
+    val fromDefault = coursier.Resolve.defaultRepositories.zipWithIndex.map {
+      case (repo, idx) =>
+        val name =
+          if (repo == Repositories.central)
+            s"${repositoryIdPrefix}central"
+          else if (repo == LocalRepositories.ivy2Local)
+            "local"
+          else
+            s"$repositoryIdPrefix-$idx"
+
+        (name, repo)
+    }
+
+    val extra = Seq(
+      s"${repositoryIdPrefix}typesafe-ivy-releases" -> IvyRepository.parse(
+        "https://repo.typesafe.com/typesafe/ivy-releases/[organization]/[module]/[revision]/[type]s/[artifact](-[classifier]).[ext]"
+      ).left.map(sys.error).merge,
+      s"${repositoryIdPrefix}sbt-plugin-releases" -> IvyRepository.parse(
+        "https://repo.scala-sbt.org/scalasbt/sbt-plugin-releases/[organization]/[module](/scala_[scalaVersion])(/sbt_[sbtVersion])/[revision]/[type]s/[artifact](-[classifier]).[ext]"
+      ).left.map(sys.error).merge
+    )
+
+    fromDefault ++ extra
+  }
 
   assert(!repositories.groupBy(_._1).exists(_._2.lengthCompare(1) > 0))
 
