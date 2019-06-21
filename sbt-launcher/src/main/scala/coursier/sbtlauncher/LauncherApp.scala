@@ -65,7 +65,8 @@ object LauncherApp extends CaseApp[LauncherOptions] {
     scalaVersion: String,
     sbtVersion: String,
     sbtBinaryVersion: String,
-    addSbtLauncherPlugin: Boolean,
+    sbtLauncherPluginVersionOpt: Option[String],
+    sbtLauncherScriptedPluginVersionOpt: Option[String],
     sbtCoursierVersionOpt: Option[String],
     sbtLmCoursierVersionOpt: Option[String],
     userExtraDeps: Seq[Dependency],
@@ -77,38 +78,37 @@ object LauncherApp extends CaseApp[LauncherOptions] {
       sbtVersion.startsWith("0.")
 
     private def sbtLauncherPluginDepOpt =
-      if (addSbtLauncherPlugin)
-        Some(
-          Dependency(
-            Module(
-              org"io.get-coursier", name"sbt-launcher-plugin",
-              attributes = Map(
-                "scalaVersion" -> scalaVersion.split('.').take(2).mkString("."),
-                "sbtVersion" -> sbtBinaryVersion
-              )
-            ),
-            Properties.version
-          )
+      sbtLauncherPluginVersionOpt.map { version =>
+        Dependency(
+          Module(
+            org"io.get-coursier", name"sbt-launcher-plugin",
+            attributes = Map(
+              "scalaVersion" -> scalaVersion.split('.').take(2).mkString("."),
+              "sbtVersion" -> sbtBinaryVersion
+            )
+          ),
+          version
         )
-      else
-        None
+      }
 
     private def sbtLauncherScriptedPluginDepOpt =
-      if (sbtBinaryVersion.startsWith("0.") || sbtVersion.startsWith("1.0.") || sbtVersion.startsWith("1.1."))
-        None
-      else
-        Some(
-          Dependency(
-            Module(
-              org"io.get-coursier", name"sbt-launcher-scripted-plugin",
-              attributes = Map(
-                "scalaVersion" -> scalaVersion.split('.').take(2).mkString("."),
-                "sbtVersion" -> sbtBinaryVersion
-              )
-            ),
-            Properties.version
+      sbtLauncherScriptedPluginVersionOpt.flatMap { version =>
+        if (sbtBinaryVersion.startsWith("0.") || sbtVersion.startsWith("1.0.") || sbtVersion.startsWith("1.1."))
+          None
+        else
+          Some(
+            Dependency(
+              Module(
+                org"io.get-coursier", name"sbt-launcher-scripted-plugin",
+                attributes = Map(
+                  "scalaVersion" -> scalaVersion.split('.').take(2).mkString("."),
+                  "sbtVersion" -> sbtBinaryVersion
+                )
+              ),
+              version
+            )
           )
-        )
+      }
 
     private def coursierDepOpt: Option[Dependency] =
       sbtCoursierVersionOpt.flatMap { sbtCoursierVersion =>
@@ -204,7 +204,8 @@ object LauncherApp extends CaseApp[LauncherOptions] {
   private def doRun(
     appId: xsbti.ApplicationID,
     args: Array[String],
-    params: RunParams
+    params: RunParams,
+    transformDependencies: Seq[Dependency] => Seq[Dependency]
   ): Unit = {
 
     log("Creating launcher")
@@ -216,7 +217,8 @@ object LauncherApp extends CaseApp[LauncherOptions] {
       new File(sbtComponents, s"components_scala${params.scalaVersion}${if (params.sbtVersion.isEmpty) "" else "_sbt" + params.sbtVersion}"),
       ivy2,
       log,
-      useDistinctSbtTestInterfaceLoader = params.useDistinctSbtTestInterfaceLoader
+      params.useDistinctSbtTestInterfaceLoader,
+      transformDependencies
     )
 
     log("Registering scala components")
@@ -273,7 +275,8 @@ object LauncherApp extends CaseApp[LauncherOptions] {
         doRun(
           appId,
           fullReload.arguments(),
-          params
+          params,
+          transformDependencies
         )
       case Right(_: xsbti.Continue) =>
       case Right(e: xsbti.Exit) =>
@@ -283,7 +286,8 @@ object LauncherApp extends CaseApp[LauncherOptions] {
         doRun(
           r.app(),
           r.arguments(),
-          params.copy(scalaVersion = r.scalaVersion())
+          params.copy(scalaVersion = r.scalaVersion()),
+          transformDependencies
         )
     }
   }
@@ -392,6 +396,12 @@ object LauncherApp extends CaseApp[LauncherOptions] {
 
     // TODO Warn if both sbt-coursier and sbt-lm-coursier are found?
 
+    lazy val isAtLeastSbt130M3 =
+      config.organization == SbtConfig.defaultOrganization &&
+        config.moduleName == SbtConfig.defaultModuleName &&
+        config.mainClass == SbtConfig.defaultMainClass &&
+        coursier.core.Version(config.version).compare(coursier.core.Version("1.3.0-M3")) >= 0
+
     val appId = ApplicationID(
       config.organization,
       config.moduleName,
@@ -403,16 +413,13 @@ object LauncherApp extends CaseApp[LauncherOptions] {
       options.classpathExtra.map(new File(_)).toArray
     )
 
-    lazy val isAtLeastSbt130M3 =
-      config.organization == SbtConfig.defaultOrganization &&
-        config.moduleName == SbtConfig.defaultModuleName &&
-        config.mainClass == SbtConfig.defaultMainClass &&
-        coursier.core.Version(config.version).compare(coursier.core.Version("1.3.0-M3")) >= 0
-
     val shortCircuitSbtMain = options.shortCircuitSbtMain
       .getOrElse(isAtLeastSbt130M3)
     val useDistinctSbtTestInterfaceLoader = options.useDistinctSbtTestInterfaceLoader
       .getOrElse(isAtLeastSbt130M3)
+
+    val launcherPluginVersion = options.launcherPluginVersion.getOrElse(Properties.version)
+    val launcherScriptedPluginVersion = options.launcherScriptedPluginVersion.getOrElse(launcherPluginVersion)
 
     doRun(
       appId,
@@ -421,13 +428,29 @@ object LauncherApp extends CaseApp[LauncherOptions] {
         config.scalaVersion,
         config.version,
         config.sbtBinaryVersion,
-        addSbtLauncherPlugin = sbtCoursierVersionOpt.exists(v => Version(v).compare(Version("1.1.0-M12")) < 0),
+        sbtLauncherPluginVersionOpt = if (sbtCoursierVersionOpt.exists(v => Version(v).compare(Version("1.1.0-M12")) < 0)) Some(launcherPluginVersion) else None,
+        sbtLauncherScriptedPluginVersionOpt = Some(launcherScriptedPluginVersion),
         sbtCoursierVersionOpt,
         sbtLmCoursierVersionOpt,
         config.parsedDependencies ++ extraDeps,
         shortCircuitSbtMain = shortCircuitSbtMain,
         useDistinctSbtTestInterfaceLoader = useDistinctSbtTestInterfaceLoader
-      )
+      ),
+      transformDependencies = _.map { dep =>
+        // For sbt >= 1.3, if sbt-coursier is added, exclude lm-coursier-shaded, as sbt-coursier will pull
+        // lm-coursier (non shaded).
+        val shouldAddExclusion =
+          dep.module.organization.value == SbtConfig.defaultOrganization &&
+            dep.module.name.value == SbtConfig.defaultModuleName &&
+            sbtCoursierVersionOpt.nonEmpty &&
+            isAtLeastSbt130M3
+        if (shouldAddExclusion)
+          dep.withExclusions(
+            dep.exclusions + (org"io.get-coursier" -> name"lm-coursier-shaded_2.12")
+          )
+        else
+          dep
+      }
     )
   }
 

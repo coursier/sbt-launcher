@@ -19,7 +19,8 @@ class Launcher(
   componentsCache: File,
   val ivyHome: File,
   log: String => Unit,
-  useDistinctSbtTestInterfaceLoader: Boolean
+  useDistinctSbtTestInterfaceLoader: Boolean,
+  transformDependencies: Seq[Dependency] => Seq[Dependency]
 ) extends xsbti.Launcher {
 
   import Launcher._
@@ -100,10 +101,12 @@ class Launcher(
 
   private def getScalaFiles(version: String, scalaOrg: Organization): Seq[File] =
     resolutionCache.artifactsOrExit(
-      Seq(
-        Dependency(Module(scalaOrg, name"scala-library"), version),
-        Dependency(Module(scalaOrg, name"scala-compiler"), version)
-      ),
+      transformDependencies {
+        Seq(
+          Dependency(Module(scalaOrg, name"scala-library"), version),
+          Dependency(Module(scalaOrg, name"scala-compiler"), version)
+        )
+      },
       forceScala = scalaOrg -> version,
       name = s"scala-compiler $version" + {
         if (scalaOrg.value == "org.scala-lang") ""
@@ -188,9 +191,11 @@ class Launcher(
   ): Seq[File] = {
     val (org, name, ver) = id
     resolutionCache.artifactsOrExit(
-      Seq(
-        Dependency(Module(Organization(org), ModuleName(name)), ver)
-      ),
+      transformDependencies {
+        Seq(
+          Dependency(Module(Organization(org), ModuleName(name)), ver)
+        )
+      },
       name = s"$org:$name:$ver"
     )
   }
@@ -205,11 +210,13 @@ class Launcher(
     val id0 = ApplicationID(id).disableCrossVersion(scalaVersion)
 
     val files = resolutionCache.artifactsOrExit(
-      extra ++ Seq(
-        Dependency(Module(Organization(id0.groupID), ModuleName(id0.name)), id0.version),
-        Dependency(Module(scalaOrg, name"scala-library"), scalaVersion),
-        Dependency(Module(scalaOrg, name"scala-compiler"), scalaVersion)
-      ),
+      transformDependencies {
+        extra ++ Seq(
+          Dependency(Module(Organization(id0.groupID), ModuleName(id0.name)), id0.version),
+          Dependency(Module(scalaOrg, name"scala-library"), scalaVersion),
+          Dependency(Module(scalaOrg, name"scala-compiler"), scalaVersion)
+        )
+      },
       forceScala = scalaOrg -> scalaVersion,
       name = {
         if (id0.groupID == "org.scala-sbt" && id0.name == "sbt")
@@ -271,6 +278,7 @@ class Launcher(
     val dep = Dependency(mod"org.scala-sbt:interface", selectedSbtVersion)
 
     resolutionCache.artifactOrExit(
+      // no transforming that one… (need to check # of dependencies in transformed sequence, …)
       dep,
       name = s"sbt interface $selectedSbtVersion"
     )
@@ -278,7 +286,9 @@ class Launcher(
 
   private def sbtCompilerInterfaceSrcComponentFile(sbtVersion: String): File = {
 
-    val deps = Seq(Dependency(mod"org.scala-sbt:compiler-interface", sbtVersion, transitive = false))
+    val deps = transformDependencies {
+      Seq(Dependency(mod"org.scala-sbt:compiler-interface", sbtVersion, transitive = false))
+    }
 
     val files =
       resolutionCache.artifactsOrExit(deps, name = s"compiler interface $sbtVersion") ++
@@ -301,18 +311,32 @@ object Launcher {
   private def defaultScalaOrg = org"org.scala-lang"
   private def repositoryIdPrefix = "coursier-launcher-"
 
-  private val repositories = Seq(
-    // FIXME Use defaults from coursier.Resolve.defaultRepositories here?
-    // mmh, ID "local" seems to be required for publishLocal to be fine if we're launching sbt
-    "local" -> LocalRepositories.ivy2Local,
-    s"${repositoryIdPrefix}central" -> MavenRepository("https://repo1.maven.org/maven2", sbtAttrStub = true),
-    s"${repositoryIdPrefix}typesafe-ivy-releases" -> IvyRepository.parse(
-      "https://repo.typesafe.com/typesafe/ivy-releases/[organization]/[module]/[revision]/[type]s/[artifact](-[classifier]).[ext]"
-    ).left.map(sys.error).merge,
-    s"${repositoryIdPrefix}sbt-plugin-releases" -> IvyRepository.parse(
-      "https://repo.scala-sbt.org/scalasbt/sbt-plugin-releases/[organization]/[module](/scala_[scalaVersion])(/sbt_[sbtVersion])/[revision]/[type]s/[artifact](-[classifier]).[ext]"
-    ).left.map(sys.error).merge
-  )
+  private val repositories = {
+
+    val fromDefault = coursier.Resolve.defaultRepositories.zipWithIndex.map {
+      case (repo, idx) =>
+        val name =
+          if (repo == Repositories.central)
+            s"${repositoryIdPrefix}central"
+          else if (repo == LocalRepositories.ivy2Local)
+            "local"
+          else
+            s"$repositoryIdPrefix-$idx"
+
+        (name, repo)
+    }
+
+    val extra = Seq(
+      s"${repositoryIdPrefix}typesafe-ivy-releases" -> IvyRepository.parse(
+        "https://repo.typesafe.com/typesafe/ivy-releases/[organization]/[module]/[revision]/[type]s/[artifact](-[classifier]).[ext]"
+      ).left.map(sys.error).merge,
+      s"${repositoryIdPrefix}sbt-plugin-releases" -> IvyRepository.parse(
+        "https://repo.scala-sbt.org/scalasbt/sbt-plugin-releases/[organization]/[module](/scala_[scalaVersion])(/sbt_[sbtVersion])/[revision]/[type]s/[artifact](-[classifier]).[ext]"
+      ).left.map(sys.error).merge
+    )
+
+    fromDefault ++ extra
+  }
 
   assert(!repositories.groupBy(_._1).exists(_._2.lengthCompare(1) > 0))
 
