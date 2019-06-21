@@ -204,7 +204,8 @@ object LauncherApp extends CaseApp[LauncherOptions] {
   private def doRun(
     appId: xsbti.ApplicationID,
     args: Array[String],
-    params: RunParams
+    params: RunParams,
+    transformDependencies: Seq[Dependency] => Seq[Dependency]
   ): Unit = {
 
     log("Creating launcher")
@@ -216,7 +217,8 @@ object LauncherApp extends CaseApp[LauncherOptions] {
       new File(sbtComponents, s"components_scala${params.scalaVersion}${if (params.sbtVersion.isEmpty) "" else "_sbt" + params.sbtVersion}"),
       ivy2,
       log,
-      useDistinctSbtTestInterfaceLoader = params.useDistinctSbtTestInterfaceLoader
+      params.useDistinctSbtTestInterfaceLoader,
+      transformDependencies
     )
 
     log("Registering scala components")
@@ -273,7 +275,8 @@ object LauncherApp extends CaseApp[LauncherOptions] {
         doRun(
           appId,
           fullReload.arguments(),
-          params
+          params,
+          transformDependencies
         )
       case Right(_: xsbti.Continue) =>
       case Right(e: xsbti.Exit) =>
@@ -283,7 +286,8 @@ object LauncherApp extends CaseApp[LauncherOptions] {
         doRun(
           r.app(),
           r.arguments(),
-          params.copy(scalaVersion = r.scalaVersion())
+          params.copy(scalaVersion = r.scalaVersion()),
+          transformDependencies
         )
     }
   }
@@ -392,6 +396,12 @@ object LauncherApp extends CaseApp[LauncherOptions] {
 
     // TODO Warn if both sbt-coursier and sbt-lm-coursier are found?
 
+    lazy val isAtLeastSbt130M3 =
+      config.organization == SbtConfig.defaultOrganization &&
+        config.moduleName == SbtConfig.defaultModuleName &&
+        config.mainClass == SbtConfig.defaultMainClass &&
+        coursier.core.Version(config.version).compare(coursier.core.Version("1.3.0-M3")) >= 0
+
     val appId = ApplicationID(
       config.organization,
       config.moduleName,
@@ -402,12 +412,6 @@ object LauncherApp extends CaseApp[LauncherOptions] {
       xsbti.CrossValue.Disabled,
       options.classpathExtra.map(new File(_)).toArray
     )
-
-    lazy val isAtLeastSbt130M3 =
-      config.organization == SbtConfig.defaultOrganization &&
-        config.moduleName == SbtConfig.defaultModuleName &&
-        config.mainClass == SbtConfig.defaultMainClass &&
-        coursier.core.Version(config.version).compare(coursier.core.Version("1.3.0-M3")) >= 0
 
     val shortCircuitSbtMain = options.shortCircuitSbtMain
       .getOrElse(isAtLeastSbt130M3)
@@ -431,7 +435,22 @@ object LauncherApp extends CaseApp[LauncherOptions] {
         config.parsedDependencies ++ extraDeps,
         shortCircuitSbtMain = shortCircuitSbtMain,
         useDistinctSbtTestInterfaceLoader = useDistinctSbtTestInterfaceLoader
-      )
+      ),
+      transformDependencies = _.map { dep =>
+        // For sbt >= 1.3, if sbt-coursier is added, exclude lm-coursier-shaded, as sbt-coursier will pull
+        // lm-coursier (non shaded).
+        val shouldAddExclusion =
+          dep.module.organization.value == SbtConfig.defaultOrganization &&
+            dep.module.name.value == SbtConfig.defaultModuleName &&
+            sbtCoursierVersionOpt.nonEmpty &&
+            isAtLeastSbt130M3
+        if (shouldAddExclusion)
+          dep.withExclusions(
+            dep.exclusions + (org"io.get-coursier" -> name"lm-coursier-shaded_2.12")
+          )
+        else
+          dep
+      }
     )
   }
 
