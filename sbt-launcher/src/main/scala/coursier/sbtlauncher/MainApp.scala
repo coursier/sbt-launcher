@@ -23,6 +23,15 @@ object MainApp {
         it.next() match {
           case arg if arg.startsWith("-C") =>
             launcherArgs += arg.stripPrefix("-C")
+          case arg if arg.startsWith("-D") =>
+            val input = arg.stripPrefix("-D")
+            val idx = input.indexOf('=')
+            val (k, v) =
+              if (idx < 0)
+                (input, "")
+              else
+                (input.take(idx), input.drop(idx + 1))
+            sys.props(k) = v
           case "-d" =>
             sbtArgs += "--debug"
           case "-w" =>
