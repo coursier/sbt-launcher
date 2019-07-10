@@ -61,6 +61,8 @@ object MainApp {
             sbtOptFile = Some(new File(it.next()))
           case arg if arg.startsWith("-B") =>
             sbtArgs += arg.stripPrefix("-B")
+          case "--" =>
+            residualArgs ++= it
           case other =>
             residualArgs += other
         }
