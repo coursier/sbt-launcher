@@ -53,7 +53,7 @@ object TestHelpers {
     dir: Path,
     sbtVersion: String,
     sbtCommands: Seq[String] = Seq("update", "updateClassifiers", "test:compile", "test"),
-    extraJavaOpts: Seq[String] = Nil,
+    extraOpts: Seq[String] = Nil,
     forceSbtVersion: Boolean = false,
     globalPlugins: Seq[String] = Nil,
     ivyHomeOpt: Option[Path] = None
@@ -102,9 +102,9 @@ object TestHelpers {
 
     val cmd = Seq(
       launcher.toAbsolutePath.toString,
-      "-J-Dsbt.global.base=" + sbtDir.toAbsolutePath,
-      "-J-Dsbt.ivy.home=" + ivyHome.toAbsolutePath
-    ) ++ extraJavaOpts.map("-J" + _) ++ extraArgs ++ Seq("--") ++ sbtCommands
+      "-Dsbt.global.base=" + sbtDir.toAbsolutePath,
+      "-Dsbt.ivy.home=" + ivyHome.toAbsolutePath
+    ) ++ extraOpts ++ extraArgs ++ Seq("--") ++ sbtCommands
 
     Console.err.println("Running")
     Console.err.println(s"  ${cmd.mkString(" ")}")
