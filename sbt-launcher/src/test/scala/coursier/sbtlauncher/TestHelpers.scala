@@ -53,7 +53,7 @@ object TestHelpers {
     dir: Path,
     sbtVersion: String,
     sbtCommands: Seq[String] = Seq("update", "updateClassifiers", "test:compile", "test"),
-    extraJavaOpts: Seq[String] = Nil,
+    extraOpts: Seq[String] = Nil,
     forceSbtVersion: Boolean = false,
     globalPlugins: Seq[String] = Nil,
     ivyHomeOpt: Option[Path] = None
@@ -63,7 +63,7 @@ object TestHelpers {
 
     val extraArgs =
       if (forceSbtVersion)
-        Seq("--version", sbtVersion)
+        Seq(s"-C--version=$sbtVersion")
       else
         Nil
 
@@ -100,29 +100,12 @@ object TestHelpers {
       )
     }
 
-    val (cmd, env) =
-      if (isWindows) {
-        val cmd = Seq(
-          launcher.toAbsolutePath.toString
-        ) ++ extraArgs ++ Seq("--") ++ sbtCommands
+    val cmd = Seq(
+      launcher.toAbsolutePath.toString,
+      "-Dsbt.global.base=" + sbtDir.toAbsolutePath,
+      "-Dsbt.ivy.home=" + ivyHome.toAbsolutePath
+    ) ++ extraOpts ++ extraArgs ++ Seq("--") ++ sbtCommands
 
-        val javaOpts = Seq(
-          s"-Dsbt.global.base=${sbtDir.toAbsolutePath}",
-          s"-Dsbt.ivy.home=${ivyHome.toAbsolutePath.toUri.getPath}",
-          "-Dcoursier.sbt-launcher.parse-args=true"
-        ) ++ extraJavaOpts
-
-        (cmd, Seq("JAVA_OPTS" -> javaOpts.mkString(" ")))
-      } else {
-        val cmd = Seq(
-          launcher.toAbsolutePath.toString,
-          "-J-Dsbt.global.base=" + sbtDir.toAbsolutePath,
-          "-J-Dsbt.ivy.home=" + ivyHome.toAbsolutePath,
-          "-J-Dcoursier.sbt-launcher.parse-args=true"
-        ) ++ extraJavaOpts.map("-J" + _) ++ extraArgs ++ Seq("--") ++ sbtCommands
-
-        (cmd, Nil)
-      }
     Console.err.println("Running")
     Console.err.println(s"  ${cmd.mkString(" ")}")
     Console.err.println(s"in directory $dir")
@@ -131,9 +114,6 @@ object TestHelpers {
       .redirectOutput(Redirect.INHERIT)
       .redirectError(Redirect.INHERIT)
       .redirectInput(Redirect.PIPE)
-    val envMap = b.environment()
-    for ((k, v) <- env)
-      envMap.put(k, v)
     try {
       val p = b.start()
       p.getOutputStream.close()

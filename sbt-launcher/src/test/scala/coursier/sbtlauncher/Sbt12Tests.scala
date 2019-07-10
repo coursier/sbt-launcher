@@ -86,7 +86,7 @@ object Sbt12Tests extends TestSuite {
             dir,
             "1.2.8",
             sbtCommands = Seq("stage", "check"),
-            extraJavaOpts = Seq("-Dcoursier.sbt-launcher.add-plugin=false")
+            extraOpts = Seq("-Dcoursier.sbt-launcher.add-plugin=false")
           )
         }
       }
