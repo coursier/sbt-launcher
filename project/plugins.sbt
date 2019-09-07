@@ -1,4 +1,4 @@
 addSbtPlugin("org.xerial.sbt" % "sbt-pack" % "0.12")
-addSbtPlugin("com.geirsson" % "sbt-ci-release" % "1.2.6")
+addSbtPlugin("com.geirsson" % "sbt-ci-release" % "1.3.1")
 
 addSbtCoursier
