@@ -208,11 +208,12 @@ class Launcher(
   ): (Seq[File], Seq[File]) = {
 
     val id0 = ApplicationID(id).disableCrossVersion(scalaVersion)
+    val idDep = Dependency(Module(Organization(id0.groupID), ModuleName(id0.name)), id0.version)
 
     val files = resolutionCache.artifactsOrExit(
       transformDependencies {
         extra ++ Seq(
-          Dependency(Module(Organization(id0.groupID), ModuleName(id0.name)), id0.version),
+          idDep,
           Dependency(Module(scalaOrg, name"scala-library"), scalaVersion),
           Dependency(Module(scalaOrg, name"scala-compiler"), scalaVersion)
         )
@@ -223,7 +224,8 @@ class Launcher(
           s"sbt ${id0.version}"
         else
           s"${id0.groupID}:${id0.name}:${id0.version}"
-      }
+      },
+      forceVersionsFrom = transformDependencies(Seq(idDep))
     )
 
     val scalaFiles = getScalaFiles(scalaVersion, scalaOrg)

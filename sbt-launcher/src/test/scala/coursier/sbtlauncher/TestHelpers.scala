@@ -56,7 +56,8 @@ object TestHelpers {
     extraOpts: Seq[String] = Nil,
     forceSbtVersion: Boolean = false,
     globalPlugins: Seq[String] = Nil,
-    ivyHomeOpt: Option[Path] = None
+    ivyHomeOpt: Option[Path] = None,
+    allowIvyCache: Boolean = false
   ): Unit = {
 
     val propFile = dir.resolve("project/build.properties")
@@ -121,6 +122,14 @@ object TestHelpers {
       assert(retCode == 0)
     } finally {
       deleteRecursively(sbtDir)
+
+      val ivyCache = ivyHome.resolve("cache")
+      if (!allowIvyCache && Files.exists(ivyCache)) {
+        val foundInCache = ivyCache.toFile.list().toSet
+        if (foundInCache.nonEmpty && foundInCache != Set("org.scala-sbt"))
+          sys.error(s"Error: $ivyCache directory was created")
+      }
+
       if (ivyHomeOpt.isEmpty)
         deleteRecursively(ivyHome)
     }

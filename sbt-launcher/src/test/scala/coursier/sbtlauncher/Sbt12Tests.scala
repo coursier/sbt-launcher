@@ -86,7 +86,16 @@ object Sbt12Tests extends TestSuite {
             dir,
             "1.2.8",
             sbtCommands = Seq("stage", "check"),
-            extraOpts = Seq("-Dcoursier.sbt-launcher.add-plugin=false")
+            extraOpts = Seq("-Dcoursier.sbt-launcher.add-plugin=false"),
+            allowIvyCache = true
+          )
+        }
+
+        "sbt-coursier shouldn't bump sbt deps" - {
+          val dir = Paths.get("tests/dont-bump-sbt-deps")
+          run(
+            dir,
+            "1.2.8"
           )
         }
       }

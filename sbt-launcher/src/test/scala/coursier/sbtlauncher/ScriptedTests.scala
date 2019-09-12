@@ -16,7 +16,8 @@ object ScriptedTests extends TestSuite {
         run(
           dir,
           "1.2.8",
-          sbtCommands = Seq("check")
+          sbtCommands = Seq("check"),
+          allowIvyCache = true
         )
       }
 
@@ -25,7 +26,8 @@ object ScriptedTests extends TestSuite {
         run(
           dir,
           "1.3.0-M2",
-          sbtCommands = Seq("check")
+          sbtCommands = Seq("check"),
+          allowIvyCache = true
         )
       }
 
@@ -34,7 +36,8 @@ object ScriptedTests extends TestSuite {
         run(
           dir,
           "1.3.0-M3",
-          sbtCommands = Seq("check")
+          sbtCommands = Seq("check"),
+          allowIvyCache = true
         )
       }
     }
@@ -47,7 +50,8 @@ object ScriptedTests extends TestSuite {
         run(
           dir,
           "1.1.6",
-          sbtCommands = Seq("scripted")
+          sbtCommands = Seq("scripted"),
+          allowIvyCache = true
         )
       }
 
@@ -56,7 +60,8 @@ object ScriptedTests extends TestSuite {
         run(
           dir,
           "1.2.8",
-          sbtCommands = Seq("scripted")
+          sbtCommands = Seq("scripted"),
+          allowIvyCache = true
         )
       }
     }
