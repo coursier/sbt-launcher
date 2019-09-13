@@ -21,6 +21,28 @@ object Sbt13Tests extends TestSuite {
           )
         }
       }
+
+      "0-RC5" - {
+        "test" - {
+          run(
+            Paths.get(s"tests/test-sbt-coursier-sbt-1.3.0-RC5"),
+            "1.3.0-RC5",
+            sbtCommands = Seq("update", "updateClassifiers", "test:compile", "coursierDependencyTree"),
+            forceSbtVersion = true
+          )
+        }
+      }
+
+      "0" - {
+        "test" - {
+          run(
+            Paths.get(s"tests/test-sbt-coursier-sbt-1.3.0"),
+            "1.3.0",
+            sbtCommands = Seq("update", "updateClassifiers", "test:compile", "coursierDependencyTree"),
+            forceSbtVersion = true
+          )
+        }
+      }
     }
 
   }
