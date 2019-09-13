@@ -402,6 +402,12 @@ object LauncherApp extends CaseApp[LauncherOptions] {
         config.mainClass == SbtConfig.defaultMainClass &&
         coursier.core.Version(config.version).compare(coursier.core.Version("1.3.0-M3")) >= 0
 
+    lazy val upToSbt130RC4 =
+      config.organization == SbtConfig.defaultOrganization &&
+        config.moduleName == SbtConfig.defaultModuleName &&
+        config.mainClass == SbtConfig.defaultMainClass &&
+        coursier.core.Version(config.version).compare(coursier.core.Version("1.3.0-RC4")) <= 0
+
     val appId = ApplicationID(
       config.organization,
       config.moduleName,
@@ -414,7 +420,7 @@ object LauncherApp extends CaseApp[LauncherOptions] {
     )
 
     val shortCircuitSbtMain = options.shortCircuitSbtMain
-      .getOrElse(isAtLeastSbt130M3)
+      .getOrElse(isAtLeastSbt130M3 && upToSbt130RC4)
     val useDistinctSbtTestInterfaceLoader = options.useDistinctSbtTestInterfaceLoader
       .getOrElse(isAtLeastSbt130M3)
 
