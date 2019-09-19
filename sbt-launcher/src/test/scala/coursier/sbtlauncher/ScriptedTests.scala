@@ -20,20 +20,11 @@ object ScriptedTests extends TestSuite {
         )
       }
 
-      "sbt 1.3.0-M2" - {
-        val dir = Paths.get("tests/scripted-check-1.3.0-M2")
+      "sbt 1.3.0" - {
+        val dir = Paths.get("tests/scripted-check-1.3.0")
         run(
           dir,
-          "1.3.0-M2",
-          sbtCommands = Seq("check")
-        )
-      }
-
-      "sbt 1.3.0-M3" - {
-        val dir = Paths.get("tests/scripted-check-1.3.0-M3")
-        run(
-          dir,
-          "1.3.0-M3",
+          "1.3.0",
           sbtCommands = Seq("check")
         )
       }

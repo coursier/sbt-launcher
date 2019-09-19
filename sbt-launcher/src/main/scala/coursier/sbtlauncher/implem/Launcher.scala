@@ -72,11 +72,7 @@ class Launcher(
       throw new NoSuchElementException("scala-compiler JAR")
     }
 
-    val intermediateTopLoader =
-      sbtTestInterfaceFilesOpt.fold(topLoader) { sbtTestInterfaceFiles =>
-        new URLClassLoader(sbtTestInterfaceFiles.map(_.toURI.toURL).toArray, topLoader)
-      }
-    val libraryLoader = new URLClassLoader(Array(libraryJar.toURI.toURL), intermediateTopLoader)
+    val libraryLoader = new URLClassLoader(Array(libraryJar.toURI.toURL), topLoader)
     val loader = new URLClassLoader(otherJars.map(_.toURI.toURL).toArray, libraryLoader)
 
     ScalaProvider(
@@ -114,8 +110,14 @@ class Launcher(
       }
     )
 
-  lazy val topLoader: ClassLoader =
-    classOf[xsbti.Launcher].getClassLoader
+  private class TestInterfaceLoader(urls: Array[URL], parent: ClassLoader)
+      extends URLClassLoader(urls, parent)
+  lazy val topLoader: ClassLoader = {
+    val top = classOf[xsbti.Launcher].getClassLoader
+    sbtTestInterfaceFilesOpt.fold(top) { sbtTestInterfaceFiles =>
+      new TestInterfaceLoader(sbtTestInterfaceFiles.map(_.toURI.toURL).toArray, top)
+    }
+  }
 
   def appRepositories: Array[xsbti.Repository] =
     repositories.map {
