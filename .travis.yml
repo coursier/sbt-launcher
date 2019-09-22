@@ -15,7 +15,7 @@ stages:
     if: tag IS present
   - name: update-sbt-extras
     if: tag IS present
-script: sbt -batch ++${TRAVIS_SCALA_VERSION} +publishLocal "testOnly coursier.sbtlauncher.${TEST_NAME}"
+script: ./sbt -batch ++${TRAVIS_SCALA_VERSION} +publishLocal "testOnly coursier.sbtlauncher.${TEST_NAME}"
 jobs:
   include:
     - env: TEST_NAME=ScriptedTests
@@ -23,7 +23,7 @@ jobs:
     - env: TEST_NAME=Sbt1203Tests
     - env: TEST_NAME=Sbt12Tests
     - stage: release
-      script: sbt ci-release
+      script: ./sbt ci-release
     - stage: upload-launcher
       env: REPO="coursier/sbt-launcher" NAME="csbt" CMD="./scripts/generate-csbt.sh -f --bat=true"
       script: scripts/upload-launcher/upload-gh-release.sh
