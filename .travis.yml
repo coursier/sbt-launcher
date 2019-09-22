@@ -1,6 +1,6 @@
 language: scala
 jdk: openjdk8
-scala: 2.12.8
+scala: 2.12.10
 before_install:
   - curl https://raw.githubusercontent.com/scala-native/scala-native/master/scripts/travis_setup.sh | bash -x
 dist: trusty
