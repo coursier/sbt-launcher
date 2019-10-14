@@ -8,8 +8,9 @@ import java.security.MessageDigest
 
 import coursier.cache.{CacheDefaults, CacheLogger, CachePolicy, FileCache}
 import coursier.cache.loggers.{FallbackRefreshDisplay, FileTypeRefreshDisplay, RefreshLogger}
-import coursier.core.{Artifact, Classifier, Organization}
+import coursier.core.{Classifier, Organization}
 import coursier.params.ResolutionParams
+import coursier.util.Artifact
 import coursier.{Dependency, Fetch, Module, moduleNameString}
 
 final case class ResolutionCache(
@@ -259,7 +260,7 @@ final case class ResolutionCache(
           .map { l =>
             // optional set to false, as the artifacts we're handed here were all found
             if (l.nonEmpty)
-              writeToCache(repr, l.map(_._1.copy(optional = false)))
+              writeToCache(repr, l.map(_._1.withOptional(false)))
             l.map(_._2)
           }
     }
@@ -294,7 +295,7 @@ final case class ResolutionCache(
     name: String = ""
   ): File =
     artifacts(
-      Seq(dependency.copy(transitive = false)),
+      Seq(dependency.withTransitive(false)),
       forceVersion,
       classifiers,
       forceScala,
