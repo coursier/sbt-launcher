@@ -93,8 +93,8 @@ final case class SbtConfig(
         pluginsModuleVersions.map {
           case (mod, ver) =>
             Dependency(
-              mod.copy(
-                attributes = mod.attributes ++ Seq(
+              mod.withAttributes(
+                mod.attributes ++ Seq(
                   "scalaVersion" -> scalaBinaryVersion,
                   "sbtVersion" -> sbtBinaryVersion
                 )
