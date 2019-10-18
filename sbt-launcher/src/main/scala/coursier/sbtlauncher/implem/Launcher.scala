@@ -287,7 +287,7 @@ class Launcher(
   private def sbtCompilerInterfaceSrcComponentFile(sbtVersion: String): File = {
 
     val deps = transformDependencies {
-      Seq(Dependency(mod"org.scala-sbt:compiler-interface", sbtVersion, transitive = false))
+      Seq(Dependency(mod"org.scala-sbt:compiler-interface", sbtVersion).withTransitive(false))
     }
 
     val files =
