@@ -50,11 +50,11 @@ lazy val `sbt-launcher` = project
     crossScalaVersions := Seq(scala212),
     scalacOptions ++= Seq("-feature", "-deprecation"),
     libraryDependencies ++= Seq(
-      "io.get-coursier" %% "coursier" % "2.0.0-RC6-1",
-      "com.github.alexarchambault" %% "case-app" % "2.0.0-M13",
+      "io.get-coursier" %% "coursier" % "2.0.0-RC6-2",
+      "com.github.alexarchambault" %% "case-app" % "2.0.0-M11",
       "org.scala-sbt" % "launcher-interface" % "1.1.3",
       "com.typesafe" % "config" % "1.4.0",
-      "com.lihaoyi" %% "utest" % "0.7.3" % "test"
+      "com.lihaoyi" %% "utest" % "0.7.4" % "test"
     ),
     mainClass.in(Compile) := Some("coursier.sbtlauncher.MainApp"),
     test.in(Test) := test.in(Test).dependsOn(publishLocal).value,
