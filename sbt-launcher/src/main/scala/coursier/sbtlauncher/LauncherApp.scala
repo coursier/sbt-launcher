@@ -88,7 +88,7 @@ object LauncherApp extends CaseApp[LauncherOptions] {
             )
           ),
           version
-        )
+        ).withExclusions(Set(org"org.scala-sbt" -> name"*"))
       }
 
     private def sbtLauncherScriptedPluginDepOpt =
@@ -106,7 +106,7 @@ object LauncherApp extends CaseApp[LauncherOptions] {
                 )
               ),
               version
-            )
+            ).withExclusions(Set(org"org.scala-sbt" -> name"*"))
           )
       }
 
@@ -123,7 +123,7 @@ object LauncherApp extends CaseApp[LauncherOptions] {
                 )
               ),
               sbtCoursierVersion
-            )
+            ).withExclusions(Set(org"org.scala-sbt" -> name"*"))
           )
         else
           None
@@ -142,7 +142,7 @@ object LauncherApp extends CaseApp[LauncherOptions] {
                 )
               ),
               sbtLmCoursierVersion
-            )
+            ).withExclusions(Set(org"org.scala-sbt" -> name"*"))
           )
         else
           None
@@ -443,12 +443,17 @@ object LauncherApp extends CaseApp[LauncherOptions] {
         useDistinctSbtTestInterfaceLoader = useDistinctSbtTestInterfaceLoader
       ),
       transformDependencies = _.map { dep =>
-        // For sbt >= 1.3, if sbt-coursier is added, exclude lm-coursier-shaded, as sbt-coursier will pull
-        // lm-coursier (non shaded).
+        // For sbt >= 1.3, if sbt-coursier is added, we prevent sbt from pulling lm-coursier-shaded,
+        // as sbt-coursier will pull lm-coursier instead.
+        // If sbt-lm-coursier is added, we prevent sbt from pulling lm-coursier-shaded too.
+        // If we don't, sbt-lm-coursier will pull its version of lm-coursier-shaded while excluding org.scala-sbt:*,
+        // but sbt will pull lm-coursier-shaded too, with no exclusions though. As a result, a recent version of
+        // lm-coursier-shaded will be pulled with no exclusions, which might bump some sbt modules, which we
+        // want to avoid.
         val shouldAddExclusion =
           dep.module.organization.value == SbtConfig.defaultOrganization &&
             dep.module.name.value == SbtConfig.defaultModuleName &&
-            sbtCoursierVersionOpt.nonEmpty &&
+            (sbtCoursierVersionOpt.nonEmpty || sbtLmCoursierVersionOpt.nonEmpty) &&
             isAtLeastSbt130M3
         if (shouldAddExclusion)
           dep.withExclusions(
