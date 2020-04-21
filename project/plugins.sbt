@@ -1,5 +1,5 @@
 addSbtPlugin("org.xerial.sbt" % "sbt-pack" % "0.12")
-addSbtPlugin("com.geirsson" % "sbt-ci-release" % "1.5.2")
+addSbtPlugin("com.geirsson" % "sbt-ci-release" % "1.5.3")
 
 // This one isn't really needed as we're using sbt 1.3.x, but its version is
 // used in build.sbt as the default sbt-(lm-)coursier version the launcher
