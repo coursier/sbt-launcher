@@ -12,7 +12,7 @@ final case class LauncherOptions(
   name: Option[String] = None,
   scalaVersion: Option[String] = None,
   version: Option[String] = None,
-  pluginVersion: Option[String] = None,
+  pluginVersion: Option[String] = LauncherOptions.defaultCoursierPluginVersion,
   launcherPluginVersion: Option[String] = None,
   launcherScriptedPluginVersion: Option[String] = None,
   mainClass: Option[String] = None,
@@ -20,7 +20,7 @@ final case class LauncherOptions(
   classpathExtra: List[String] = Nil,
   extra: List[String] = Nil,
   addCoursier: Boolean = LauncherOptions.defaultAddCoursier,
-  coursierPlugin: Option[String] = None,
+  coursierPlugin: Option[String] = LauncherOptions.defaultCoursierPlugin,
   shortCircuitSbtMain: Option[Boolean] = None,
   useDistinctSbtTestInterfaceLoader: Option[Boolean] = None
 ) {
@@ -46,7 +46,19 @@ final case class LauncherOptions(
 
 object LauncherOptions {
   def defaultAddCoursier: Boolean =
-    sys.env.get("COURSIER_SBT_LAUNCHER_ADD_PLUGIN")
+    Option(System.getenv("COURSIER_SBT_LAUNCHER_ADD_PLUGIN"))
       .orElse(sys.props.get("coursier.sbt-launcher.add-plugin"))
+      .map(_.trim)
+      .filter(_.nonEmpty)
       .forall(s => s.toLowerCase(Locale.ROOT) == "true" || s == "1")
+  def defaultCoursierPlugin: Option[String] =
+    Option(System.getenv("COURSIER_SBT_LAUNCHER_PLUGIN"))
+      .orElse(sys.props.get("coursier.sbt-launcher.plugin"))
+      .map(_.trim)
+      .filter(_.nonEmpty)
+  def defaultCoursierPluginVersion: Option[String] =
+    Option(System.getenv("COURSIER_SBT_LAUNCHER_PLUGIN_VERSION"))
+      .orElse(Option(System.getProperty("coursier.sbt-launcher.plugin-version")))
+      .map(_.trim)
+      .filter(_.nonEmpty)
 }
