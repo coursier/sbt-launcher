@@ -38,7 +38,11 @@ class Launcher(
 
   def isOverrideRepositories = false // ???
 
-  def bootDirectory: File = ???
+  def bootDirectory: File = {
+    // stub, we don't really use that directory ourselves…
+    val home = new File(System.getProperty("user.home"))
+    new File(home, ".sbt/boot")
+  }
 
   def getScala(version: String): xsbti.ScalaProvider =
     getScala(version, "")
