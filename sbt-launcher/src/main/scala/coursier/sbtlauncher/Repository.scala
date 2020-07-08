@@ -4,7 +4,7 @@ import java.net.URL
 
 object Repository {
 
-  final case class Maven(id: String, url: URL) extends xsbti.MavenRepository
+  final case class Maven(id: String, url: URL, allowInsecureProtocol: Boolean) extends xsbti.MavenRepository
 
   final case class Ivy(
     id: String,
@@ -13,7 +13,8 @@ object Repository {
     artifactPattern: String,
     mavenCompatible: Boolean,
     skipConsistencyCheck: Boolean,
-    descriptorOptional: Boolean
+    descriptorOptional: Boolean,
+    allowInsecureProtocol: Boolean
   ) extends xsbti.IvyRepository
 
   final case class Predefined(id: xsbti.Predefined) extends xsbti.PredefinedRepository

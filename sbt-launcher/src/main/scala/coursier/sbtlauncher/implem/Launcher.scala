@@ -129,7 +129,7 @@ class Launcher(
         // directory, which makes things file:${ivy.home}/… start with the wrong path…)
         Repository.Predefined(xsbti.Predefined.Local)
       case (id, m: MavenRepository) =>
-        Repository.Maven(id, new URL(m.root))
+        Repository.Maven(id, new URL(m.root), !m.root.startsWith("https://"))
       case (id, i: IvyRepository) =>
 
         assert(i.metadataPatternOpt.forall(_ == i.pattern))
@@ -145,7 +145,8 @@ class Launcher(
           pat,
           mavenCompatible = false,
           skipConsistencyCheck = true, // ???
-          descriptorOptional = true // ???
+          descriptorOptional = true, // ???
+          allowInsecureProtocol = !base.startsWith("https://")
         )
       case (_, _) =>
         ???
