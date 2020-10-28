@@ -53,7 +53,7 @@ lazy val `sbt-launcher` = project
       "io.get-coursier" %% "coursier" % "2.0.2",
       "com.github.alexarchambault" %% "case-app" % "2.0.4",
       "org.scala-sbt" % "launcher-interface" % "1.1.5",
-      "com.typesafe" % "config" % "1.4.0",
+      "com.typesafe" % "config" % "1.4.1",
       "com.lihaoyi" %% "utest" % "0.7.5" % "test"
     ),
     mainClass.in(Compile) := Some("coursier.sbtlauncher.MainApp"),
