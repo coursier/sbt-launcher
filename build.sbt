@@ -50,7 +50,7 @@ lazy val `sbt-launcher` = project
     crossScalaVersions := Seq(scala212),
     scalacOptions ++= Seq("-feature", "-deprecation"),
     libraryDependencies ++= Seq(
-      "io.get-coursier" %% "coursier" % "2.0.12",
+      "io.get-coursier" %% "coursier" % "2.0.13",
       "com.github.alexarchambault" %% "case-app" % "2.0.4",
       "org.scala-sbt" % "launcher-interface" % "1.2.0",
       "com.typesafe" % "config" % "1.4.1",
