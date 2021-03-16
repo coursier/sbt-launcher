@@ -39,7 +39,7 @@ jobs:
       if: runner.os != 'Windows'
       env:
         TEST_NAME: ${{ matrix.TEST_NAME }}
-    - run: BASH="C:\\Program Files\\Git\\bin\\bash.EXE" sbt +publishLocal "testOnly coursier.sbtlauncher.${TEST_NAME}"
+    - run: BASH="C:\\Program Files\\Git\\bin\\bash.EXE" cs launch sbt-launcher:1.2.22 -- +publishLocal "testOnly coursier.sbtlauncher.${TEST_NAME}"
       shell: bash
       if: runner.os == 'Windows'
       env:
