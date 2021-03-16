@@ -34,12 +34,12 @@ jobs:
     - run: curl https://raw.githubusercontent.com/scala-native/scala-native/master/scripts/travis_setup.sh | bash -x
       if: runner.os != 'Windows'
       shell: bash
-    - run: sbt publishLocal "testOnly coursier.sbtlauncher.${TEST_NAME}"
+    - run: sbt +publishLocal "testOnly coursier.sbtlauncher.${TEST_NAME}"
       shell: bash
       if: runner.os != 'Windows'
       env:
         TEST_NAME: ${{ matrix.TEST_NAME }}
-    - run: BASH="C:\\Program Files\\Git\\bin\\bash.EXE" sbt publishLocal "testOnly coursier.sbtlauncher.${TEST_NAME}"
+    - run: BASH="C:\\Program Files\\Git\\bin\\bash.EXE" sbt +publishLocal "testOnly coursier.sbtlauncher.${TEST_NAME}"
       shell: bash
       if: runner.os == 'Windows'
       env:
