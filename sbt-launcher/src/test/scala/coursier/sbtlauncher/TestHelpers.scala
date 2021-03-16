@@ -14,7 +14,8 @@ object TestHelpers {
 
   lazy val launcher = {
     val p = Paths.get("target/test-csbt")
-    val bashPath = if (isWindows) "bash" else "/bin/bash"
+    val bashPath = Option(System.getenv("BASH"))
+      .getOrElse(if (isWindows) "bash.exe" else "/bin/bash")
     val b = new ProcessBuilder(bashPath, "-c", "./scripts/generate-csbt.sh -r ivy2Local -f")
       .redirectOutput(Redirect.INHERIT)
       .redirectError(Redirect.INHERIT)

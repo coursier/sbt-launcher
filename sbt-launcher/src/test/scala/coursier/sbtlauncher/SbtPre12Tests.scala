@@ -13,7 +13,11 @@ object SbtPre12Tests extends TestSuite {
     "sbt 0.13.17" - {
       "sourcecode" - {
         val dir = Paths.get("tests/sourcecode-sbt-0.13.17")
-        run(dir, "0.13.17")
+        run(
+          dir,
+          "0.13.17",
+          sbtCommands = Seq("update", "updateClassifiers", "test:compile")
+        )
       }
       "sourcecode global plugins" - {
         val dir = Paths.get("tests/sourcecode-sbt-0.13.17")
@@ -23,7 +27,8 @@ object SbtPre12Tests extends TestSuite {
           globalPlugins = Seq(
             """"ch.epfl.scala" % "sbt-bloop" % "1.2.5"""",
             """"org.scalameta" % "sbt-metals" % "0.4.4""""
-          )
+          ),
+          sbtCommands = Seq("update", "updateClassifiers", "test:compile")
         )
       }
     }
