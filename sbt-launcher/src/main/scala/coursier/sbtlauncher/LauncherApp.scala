@@ -235,7 +235,7 @@ object LauncherApp extends CaseApp[LauncherOptions] {
     val appMain =
       if (params.shortCircuitSbtMain) {
         val loader = appProvider.loader()
-        val clazz = loader.loadClass("sbt.xMainImpl$")
+        val clazz = loader.loadClass("sbt.xMain$")
         val instance = clazz.getField("MODULE$").get(null)
         val runMethod = clazz.getMethod("run", classOf[xsbti.AppConfiguration])
         val f = {
