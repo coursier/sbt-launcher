@@ -12,6 +12,7 @@ import coursier.core.{Classifier, Organization}
 import coursier.params.ResolutionParams
 import coursier.util.Artifact
 import coursier.{Dependency, Fetch, Module, moduleNameString}
+import coursier.Resolve
 
 final case class ResolutionCache(
   resolutionCacheDirOpt: Option[Path],
@@ -27,7 +28,8 @@ final case class ResolutionCache(
     dependencies: Seq[Dependency],
     forceVersion: Map[Module, String],
     classifiersOpt: Option[Seq[Classifier]],
-    name: String
+    name: String,
+    forceVersionsFrom: Seq[Dependency] = Nil
   ): Either[Exception, Seq[(Artifact, File)]] =
     if (dependencies.isEmpty)
       Right(Nil)
@@ -78,20 +80,40 @@ final case class ResolutionCache(
         } else
           (cache0, Nil)
 
+      val extraForceVersions =
+        if (forceVersionsFrom.isEmpty)
+          Right(Nil)
+        else {
+          Resolve()
+            .addDependencies(forceVersionsFrom: _*)
+            .withRepositories(repositories)
+            .withResolutionParams(
+              ResolutionParams()
+                .withForceVersion(forceVersion)
+            )
+            .either()
+            .map { res =>
+              res.orderedDependencies.map(_.moduleVersion)
+            }
+        }
+
       val classifiers = classifiersOpt.getOrElse(Nil).toSet
-      Fetch()
-        .addDependencies(dependencies: _*)
-        .withRepositories(repositories)
-        .withClassifiers(classifiers)
-        .withResolutionParams(
-          ResolutionParams()
-            .withForceVersion(forceVersion)
-        )
-        .withResolveCache(cache0)
-        .withArtifactsCache(firstCache)
-        .withOtherArtifactsCaches(otherCaches)
-        .eitherResult()
-        .map(_.artifacts)
+
+      extraForceVersions.flatMap { extraForceVersions0 =>
+        Fetch()
+          .addDependencies(dependencies: _*)
+          .withRepositories(repositories)
+          .withClassifiers(classifiers)
+          .withResolutionParams(
+            ResolutionParams()
+              .withForceVersion(forceVersion ++ extraForceVersions0)
+          )
+          .withResolveCache(cache0)
+          .withArtifactsCache(firstCache)
+          .withOtherArtifactsCaches(otherCaches)
+          .eitherResult()
+          .map(_.artifacts)
+      }
     }
 
 
@@ -209,7 +231,8 @@ final case class ResolutionCache(
     forceVersion: Map[Module, String] = Map(),
     classifiers: Seq[Classifier] = null,
     forceScala: (Organization, String) = null,
-    name: String = ""
+    name: String = "",
+    forceVersionsFrom: Seq[Dependency] = Nil
   ): Either[Exception, Seq[File]] = {
 
     val dependenciesRepr =
@@ -241,9 +264,18 @@ final case class ResolutionCache(
         "Classifiers\n" + l.map("  " + _).mkString("\n")
       }
 
+    val forceVersionsFromRepr =
+      if (forceVersionsFrom.isEmpty) Nil
+      else
+        // like for dependenciesRepr, toString might not be too suited for that…
+        forceVersionsFrom
+          .map(_.toString)
+          .sorted
+
     val repr =
       "Dependencies\n" + dependenciesRepr.map("  " + _).mkString("\n") + "\n\n" +
       "Force versions\n" + forceVersionsRepr.map("  " + _).mkString("\n") + "\n\n" +
+      "Force versions from\n" + forceVersionsFromRepr.map("  " + _).mkString("\n") + "\n\n" +
       classifiersRepr
 
     fromCache(repr) match {
@@ -254,7 +286,8 @@ final case class ResolutionCache(
           dependencies,
           forceVersion0,
           Option(classifiers),
-          name
+          name,
+          forceVersionsFrom = forceVersionsFrom
         )
           .right
           .map { l =>
@@ -271,14 +304,16 @@ final case class ResolutionCache(
     forceVersion: Map[Module, String] = Map(),
     classifiers: Seq[Classifier] = null,
     forceScala: (Organization, String) = null,
-    name: String = ""
+    name: String = "",
+    forceVersionsFrom: Seq[Dependency] = Nil
   ): Seq[File] =
     artifacts(
       dependencies,
       forceVersion,
       classifiers,
       forceScala,
-      name
+      name,
+      forceVersionsFrom
     ) match {
       case Left(err) =>
         System.err.println(err.getMessage)
