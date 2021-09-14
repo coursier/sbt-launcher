@@ -13,7 +13,7 @@ inThisBuild(List(
   )
 ))
 
-def scala212 = "2.12.12"
+def scala212 = "2.12.15"
 def scala210 = "2.10.7"
 
 lazy val `sbt-launcher-plugin` = project
