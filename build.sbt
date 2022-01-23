@@ -54,7 +54,7 @@ lazy val `sbt-launcher` = project
       "com.github.alexarchambault" %% "case-app" % "2.0.4",
       "org.scala-sbt" % "launcher-interface" % "1.2.0",
       "com.typesafe" % "config" % "1.4.1",
-      "com.lihaoyi" %% "utest" % "0.7.7" % "test"
+      "com.lihaoyi" %% "utest" % "0.7.11" % "test"
     ),
     mainClass.in(Compile) := Some("coursier.sbtlauncher.MainApp"),
     test.in(Test) := test.in(Test).dependsOn(publishLocal).value,
