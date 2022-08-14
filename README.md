@@ -1,3 +1,5 @@
+> This repository is deprecated, and will likely be archived in the near future. The default sbt launcher now uses coursier upfront to download the sbt class path, so that the launcher here doesn't bring any significant feature any more. It is advised to switch to the default sbt launcher rather than using the sbt launcher of this repository.
+
 # csbt
 
 coursier-based sbt launcher
