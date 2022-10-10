@@ -19,7 +19,7 @@ jobs:
           - OS: windows-latest
             TEST_NAME: ScriptedTests
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3.1.0
       with:
         fetch-depth: 0
         submodules: true
@@ -59,7 +59,7 @@ jobs:
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3.1.0
       with:
         fetch-depth: 0
         submodules: true
@@ -81,7 +81,7 @@ jobs:
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3.1.0
       with:
         fetch-depth: 0
         submodules: true
@@ -102,7 +102,7 @@ jobs:
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3.1.0
       with:
         fetch-depth: 0
         submodules: true
