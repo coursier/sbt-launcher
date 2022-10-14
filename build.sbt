@@ -21,11 +21,11 @@ lazy val `sbt-launcher-plugin` = project
     sbtPlugin := true,
     scalaVersion := scala212,
     crossScalaVersions := Seq(scala212, scala210),
-    sbtVersion.in(pluginCrossBuild) := {
+    (pluginCrossBuild / sbtVersion) := {
       scalaBinaryVersion.value match {
         case "2.10" => "0.13.8"
         case "2.12" => "1.0.1"
-        case _ => sbtVersion.in(pluginCrossBuild).value
+        case _ => (pluginCrossBuild / sbtVersion).value
       }
     }
   )
@@ -35,10 +35,10 @@ lazy val `sbt-launcher-scripted-plugin` = project
     sbtPlugin := true,
     scalaVersion := scala212,
     crossScalaVersions := Seq(scala212),
-    sbtVersion.in(pluginCrossBuild) := {
+    (pluginCrossBuild / sbtVersion) := {
       scalaBinaryVersion.value match {
         case "2.12" => "1.2.0"
-        case _ => sbtVersion.in(pluginCrossBuild).value
+        case _ => (pluginCrossBuild / sbtVersion).value
       }
     }
   )
@@ -56,13 +56,13 @@ lazy val `sbt-launcher` = project
       "com.typesafe" % "config" % "1.4.1",
       "com.lihaoyi" %% "utest" % "0.7.7" % "test"
     ),
-    mainClass.in(Compile) := Some("coursier.sbtlauncher.MainApp"),
-    test.in(Test) := test.in(Test).dependsOn(publishLocal).value,
+    (Compile / mainClass) := Some("coursier.sbtlauncher.MainApp"),
+    (Test / test) := (Test / test).dependsOn(publishLocal).value,
     testFrameworks += new TestFramework("utest.runner.Framework"),
-    resourceGenerators.in(Compile) += Def.task {
+    (Compile / resourceGenerators) += Def.task {
       import sys.process._
 
-      val dir = classDirectory.in(Compile).value / "coursier" / "sbtlauncher"
+      val dir = (Compile / classDirectory).value / "coursier" / "sbtlauncher"
       val ver = version.value
 
       val f = dir / "sbtlauncher.properties"
